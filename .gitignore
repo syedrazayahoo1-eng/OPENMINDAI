@@ -1,0 +1,30 @@
+# Node
+node_modules/
+
+# .NET
+bin/
+obj/
+
+# Visual Studio
+.vs/
+.vscode/
+
+# Archives
+*.zip
+*.rar
+*.7z
+
+# Logs
+*.log
+
+# Environment
+.env
+.env.*
+
+# Build
+dist/
+build/
+
+# OS
+.DS_Store
+Thumbs.db
