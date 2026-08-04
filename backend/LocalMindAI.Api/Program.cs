@@ -8,6 +8,9 @@ using Microsoft.OpenApi;
 
 var builder = WebApplication.CreateBuilder(args);
 
+builder.Logging.ClearProviders();
+builder.Logging.AddConsole();
+
 // -------------------------
 // Services
 // -------------------------
@@ -27,7 +30,7 @@ builder.Services.AddCors(options =>
 
 // Database
 builder.Services.AddDbContext<ApplicationDbContext>(options =>
-    options.UseSqlServer(
+    options.UseSqlite(
         builder.Configuration.GetConnectionString("DefaultConnection")));
 
 // JWT Authentication
@@ -75,6 +78,8 @@ builder.Services.AddScoped<LocalMindAI.Api.Services.AIService>();
 
 // Review Service
 builder.Services.AddScoped<LocalMindAI.Api.Services.IReviewService, LocalMindAI.Api.Services.ReviewService>();
+builder.Services.AddScoped<LocalMindAI.Api.Services.IAgentService, LocalMindAI.Api.Services.AgentService>();
+builder.Services.AddScoped<LocalMindAI.Api.Services.IGoogleBusinessProfileService, LocalMindAI.Api.Services.GoogleBusinessProfileService>();
 
 // AI Gateway (Azure OpenAI / Ollama providers + factory)
 builder.Services.AddHttpClient();

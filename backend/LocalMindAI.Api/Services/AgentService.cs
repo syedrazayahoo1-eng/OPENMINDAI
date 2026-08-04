@@ -1,0 +1,90 @@
+using LocalMindAI.Api.Data;
+using LocalMindAI.Api.DTOs.Agents;
+using LocalMindAI.Api.Models;
+using Microsoft.EntityFrameworkCore;
+
+namespace LocalMindAI.Api.Services;
+
+public class AgentService : IAgentService
+{
+    private readonly ApplicationDbContext _context;
+
+    public AgentService(ApplicationDbContext context) => _context = context;
+
+    public async Task<IEnumerable<AgentDto>> GetAllAsync() => await _context.Agents
+        .AsNoTracking().OrderByDescending(agent => agent.UpdatedAt).Select(agent => Map(agent)).ToListAsync();
+
+    public async Task<AgentDto?> GetByIdAsync(int id)
+    {
+        var agent = await _context.Agents.AsNoTracking().FirstOrDefaultAsync(agent => agent.Id == id);
+        return agent == null ? null : Map(agent);
+    }
+
+    public async Task<AgentDto> CreateAsync(CreateAgentDto dto)
+    {
+        var now = DateTime.UtcNow;
+        var agent = new Agent
+        {
+            Name = dto.Name.Trim(), Initials = BuildInitials(dto.Name), Department = dto.Department.Trim(),
+            CurrentTask = "Ready to begin work", Models = dto.Models.Trim(), Description = dto.Description.Trim(),
+            Temperature = dto.Temperature, MaxTokens = dto.MaxTokens, Performance = 100, LastActiveAt = now,
+            CreatedAt = now, UpdatedAt = now
+        };
+        _context.Agents.Add(agent);
+        await _context.SaveChangesAsync();
+        return Map(agent);
+    }
+
+    public async Task<AgentDto?> UpdateAsync(int id, UpdateAgentDto dto)
+    {
+        var agent = await _context.Agents.FindAsync(id);
+        if (agent == null) return null;
+        agent.Name = dto.Name.Trim(); agent.Initials = BuildInitials(dto.Name); agent.Department = dto.Department.Trim();
+        agent.Status = dto.Status.Trim(); agent.CurrentTask = dto.CurrentTask.Trim(); agent.Models = dto.Models.Trim();
+        agent.Description = dto.Description.Trim(); agent.Temperature = dto.Temperature; agent.MaxTokens = dto.MaxTokens;
+        agent.UpdatedAt = DateTime.UtcNow;
+        await _context.SaveChangesAsync();
+        return Map(agent);
+    }
+
+    public async Task<bool> DeleteAsync(int id)
+    {
+        var agent = await _context.Agents.FindAsync(id);
+        if (agent == null) return false;
+        _context.Agents.Remove(agent);
+        await _context.SaveChangesAsync();
+        return true;
+    }
+
+    public Task<AgentDto?> PauseAsync(int id) => SetStatusAsync(id, "Paused");
+    public Task<AgentDto?> ResumeAsync(int id) => SetStatusAsync(id, "Running");
+
+    public async Task<AgentDto?> RestartAsync(int id)
+    {
+        var agent = await _context.Agents.FindAsync(id);
+        if (agent == null) return null;
+        agent.Status = "Running"; agent.LastActiveAt = DateTime.UtcNow; agent.UpdatedAt = agent.LastActiveAt;
+        await _context.SaveChangesAsync();
+        return Map(agent);
+    }
+
+    private async Task<AgentDto?> SetStatusAsync(int id, string status)
+    {
+        var agent = await _context.Agents.FindAsync(id);
+        if (agent == null) return null;
+        agent.Status = status; agent.LastActiveAt = DateTime.UtcNow; agent.UpdatedAt = agent.LastActiveAt;
+        await _context.SaveChangesAsync();
+        return Map(agent);
+    }
+
+    private static string BuildInitials(string name) => string.Concat(name.Split(' ', StringSplitOptions.RemoveEmptyEntries)
+        .Take(2).Select(word => char.ToUpperInvariant(word[0])));
+
+    private static AgentDto Map(Agent agent) => new()
+    {
+        Id = agent.Id, Name = agent.Name, Initials = agent.Initials, Department = agent.Department, Status = agent.Status,
+        CurrentTask = agent.CurrentTask, Performance = agent.Performance, Description = agent.Description,
+        LastActiveAt = agent.LastActiveAt, Models = agent.Models, Tone = agent.Tone, Temperature = agent.Temperature,
+        MaxTokens = agent.MaxTokens, CreatedAt = agent.CreatedAt, UpdatedAt = agent.UpdatedAt
+    };
+}

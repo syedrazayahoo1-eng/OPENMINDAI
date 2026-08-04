@@ -17,10 +17,10 @@ namespace LocalMindAI.Api.Migrations
                 {
                     Id = table.Column<int>(type: "int", nullable: false)
                         .Annotation("SqlServer:Identity", "1, 1"),
-                    UserEmail = table.Column<string>(type: "nvarchar(max)", nullable: false),
-                    UserMessage = table.Column<string>(type: "nvarchar(max)", nullable: false),
-                    AiResponse = table.Column<string>(type: "nvarchar(max)", nullable: false),
-                    CreatedAt = table.Column<DateTime>(type: "datetime2", nullable: false)
+                    UserEmail = table.Column<string>(type: "TEXT", nullable: false),
+                    UserMessage = table.Column<string>(type: "TEXT", nullable: false),
+                    AiResponse = table.Column<string>(type: "TEXT", nullable: false),
+                    CreatedAt = table.Column<DateTime>(type: "TEXT", nullable: false)
                 },
                 constraints: table =>
                 {
