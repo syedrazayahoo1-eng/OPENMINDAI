@@ -92,4 +92,25 @@ public class ReviewsController : ControllerBase
             return StatusCode(500, new { Message = "An error occurred while generating the reply.", Details = ex.Message });
         }
     }
+
+    [HttpPost("{id}/publish")]
+    public async Task<IActionResult> PublishReply(int id, PostReplyRequest request)
+    {
+        request.ReviewId = id;
+        return await _reviewService.PostReplyAsync(request) ? Ok(new { message = "Reply published." }) : NotFound();
+    }
+
+    [HttpPost("bulk/publish")]
+    public async Task<IActionResult> BulkPublish(IEnumerable<PostReplyRequest> requests)
+    {
+        var results = await Task.WhenAll(requests.Select(_reviewService.PostReplyAsync));
+        return Ok(new { published = results.Count(result => result) });
+    }
+
+    [HttpGet("analytics")]
+    public async Task<IActionResult> Analytics()
+    {
+        var reviews = (await _reviewService.GetAllAsync()).ToList();
+        return Ok(new { total = reviews.Count, replied = reviews.Count(review => review.IsReplied), averageRating = reviews.Count == 0 ? 0 : reviews.Average(review => review.Rating), positive = reviews.Count(review => review.Rating >= 4), neutral = reviews.Count(review => review.Rating == 3), negative = reviews.Count(review => review.Rating <= 2) });
+    }
 }
