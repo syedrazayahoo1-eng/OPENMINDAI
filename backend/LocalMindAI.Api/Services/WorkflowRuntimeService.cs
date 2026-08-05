@@ -1,11 +1,13 @@
 using System.Text.Json;
 using LocalMindAI.Api.Data;
 using LocalMindAI.Api.Models;
+using LocalMindAI.Api.Hubs;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.AspNetCore.SignalR;
 
 namespace LocalMindAI.Api.Services;
 
-public class WorkflowRuntimeService(ApplicationDbContext context, WorkflowExecutionQueue queue, IAgentService agentService, ILogger<WorkflowRuntimeService> logger) : IWorkflowRuntimeService
+public class WorkflowRuntimeService(ApplicationDbContext context, WorkflowExecutionQueue queue, IAgentService agentService, IGoogleBusinessPostPublisher postPublisher, IHubContext<WorkflowMonitoringHub> hub, ILogger<WorkflowRuntimeService> logger) : IWorkflowRuntimeService
 {
     public async Task<WorkflowExecution?> QueueAsync(int workflowId, CancellationToken cancellationToken = default)
     {
@@ -16,6 +18,7 @@ public class WorkflowRuntimeService(ApplicationDbContext context, WorkflowExecut
         var execution = new WorkflowExecution { WorkflowId = workflowId, Status = "Queued", CreatedAt = DateTime.UtcNow };
         context.WorkflowExecutions.Add(execution);
         await context.SaveChangesAsync(cancellationToken);
+        await PublishStatusAsync(workflow, execution, cancellationToken);
         await queue.EnqueueAsync(new WorkflowExecutionJob(workflowId, execution.Id), cancellationToken);
         return execution;
     }
@@ -36,6 +39,7 @@ public class WorkflowRuntimeService(ApplicationDbContext context, WorkflowExecut
         workflow.Status = "Paused";
         workflow.UpdatedAt = DateTime.UtcNow;
         await context.SaveChangesAsync();
+        await hub.Clients.All.SendAsync("WorkflowStatusChanged", new { workflowId, status = workflow.Status }, CancellationToken.None);
         return true;
     }
 
@@ -60,6 +64,7 @@ public class WorkflowRuntimeService(ApplicationDbContext context, WorkflowExecut
             execution.StartedAt = DateTime.UtcNow;
             await AddLogAsync(execution, "Runtime", "Workflow execution started.", cancellationToken);
             await context.SaveChangesAsync(cancellationToken);
+            await PublishStatusAsync(workflow, execution, cancellationToken);
             var definition = GetDefinition(workflow);
             using var document = string.IsNullOrWhiteSpace(definition) ? null : JsonDocument.Parse(definition);
             var nodes = document?.RootElement.TryGetProperty("nodes", out var elements) == true ? elements.EnumerateArray().ToArray() : [];
@@ -73,6 +78,7 @@ public class WorkflowRuntimeService(ApplicationDbContext context, WorkflowExecut
                     execution.CurrentStep = string.Empty;
                     await AddLogAsync(execution, "Runtime", "Workflow execution paused.", cancellationToken);
                     await context.SaveChangesAsync(cancellationToken);
+                    await PublishStatusAsync(workflow, execution, cancellationToken);
                     return;
                 }
                 var node = nodes[index];
@@ -80,22 +86,30 @@ public class WorkflowRuntimeService(ApplicationDbContext context, WorkflowExecut
                 var nodeType = node.TryGetProperty("type", out var type) ? type.GetString() ?? string.Empty : string.Empty;
                 execution.CurrentStep = stepName;
                 execution.Progress = (int)Math.Round((index + 1d) / Math.Max(nodes.Length, 1) * 100);
-                if (nodeType == "Triggers" && stepName == "Google Review")
+                if (nodeType == "Triggers" && (stepName == "Google Review" || stepName == "New Google Review"))
                 {
                     var review = await ResolveReviewAsync(properties, cancellationToken);
                     if (review == null) throw new InvalidOperationException("Google Review trigger requires an available review.");
                     triggerContext = $"Google Review from {review.ReviewerName}; rating {review.Rating}/5; content: {review.ReviewText}";
                     await AddLogAsync(execution, stepName, $"Google Review trigger received review #{review.Id} from {review.ReviewerName}.", cancellationToken);
                 }
-                else if (nodeType == "AI")
+                else if (nodeType == "AI" || (nodeType == "Actions" && stepName == "Run AI Agent"))
                 {
                     await AddLogAsync(execution, stepName, "AI agent execution started.", cancellationToken);
                     var result = await agentService.ExecuteAsync(stepName, triggerContext, cancellationToken);
                     await AddLogAsync(execution, stepName, $"AI agent '{result.AgentName}' completed with {result.Output.Length} response characters.", cancellationToken);
                     triggerContext = result.Output;
                 }
-                else await AddLogAsync(execution, stepName, "Step processed by the runtime foundation.", cancellationToken);
+                else if (nodeType == "Actions" && stepName == "Publish Google Business Post")
+                {
+                    if (!properties.TryGetProperty("postId", out var postIdValue) || !postIdValue.TryGetInt32(out var postId)) throw new InvalidOperationException("Publish Google Business Post requires a postId in node properties.");
+                    var published = await postPublisher.PublishAsync(postId, cancellationToken: cancellationToken);
+                    if (!published.Succeeded) throw new InvalidOperationException(published.ErrorMessage);
+                    await AddLogAsync(execution, stepName, $"Google Business post #{postId} published.", cancellationToken);
+                }
+                else await AddLogAsync(execution, stepName, "Step processed in test-safe runtime mode.", cancellationToken);
                 await context.SaveChangesAsync(cancellationToken);
+                await PublishProgressAsync(workflow, execution, cancellationToken);
                 await Task.Delay(150, cancellationToken);
             }
             execution.Status = "Completed";
@@ -106,6 +120,7 @@ public class WorkflowRuntimeService(ApplicationDbContext context, WorkflowExecut
             workflow.UpdatedAt = DateTime.UtcNow;
             await AddLogAsync(execution, "Runtime", "Workflow execution completed.", cancellationToken);
             await context.SaveChangesAsync(cancellationToken);
+            await PublishStatusAsync(workflow, execution, cancellationToken);
         }
         catch (Exception exception)
         {
@@ -116,13 +131,19 @@ public class WorkflowRuntimeService(ApplicationDbContext context, WorkflowExecut
             workflow.Status = "Failed";
             await AddLogAsync(execution, "Runtime", exception.Message, cancellationToken, "Error");
             await context.SaveChangesAsync(cancellationToken);
+            await PublishStatusAsync(workflow, execution, cancellationToken);
         }
     }
 
     private async Task AddLogAsync(WorkflowExecution execution, string stepName, string message, CancellationToken cancellationToken, string level = "Information")
     {
-        await context.WorkflowExecutionLogs.AddAsync(new WorkflowExecutionLog { WorkflowExecutionId = execution.Id, WorkflowId = execution.WorkflowId, StepName = stepName, Message = message, Level = level, CreatedAt = DateTime.UtcNow }, cancellationToken);
+        var log = new WorkflowExecutionLog { WorkflowExecutionId = execution.Id, WorkflowId = execution.WorkflowId, StepName = stepName, Message = message, Level = level, CreatedAt = DateTime.UtcNow };
+        await context.WorkflowExecutionLogs.AddAsync(log, cancellationToken);
+        await hub.Clients.All.SendAsync("WorkflowExecutionLog", new { executionId = execution.Id, workflowId = execution.WorkflowId, stepName, message, level, createdAt = log.CreatedAt }, CancellationToken.None);
     }
+
+    private Task PublishStatusAsync(Workflow workflow, WorkflowExecution execution, CancellationToken cancellationToken) => hub.Clients.All.SendAsync("WorkflowStatusChanged", new { workflowId = workflow.Id, status = workflow.Status, executionId = execution.Id, executionStatus = execution.Status, progress = execution.Progress, currentStep = execution.CurrentStep, startedAt = execution.StartedAt, completedAt = execution.CompletedAt, error = execution.Error }, cancellationToken);
+    private Task PublishProgressAsync(Workflow workflow, WorkflowExecution execution, CancellationToken cancellationToken) => hub.Clients.All.SendAsync("WorkflowProgress", new { workflowId = workflow.Id, executionId = execution.Id, status = execution.Status, progress = execution.Progress, currentStep = execution.CurrentStep }, cancellationToken);
 
     private static string GetDefinition(Workflow workflow)
     {

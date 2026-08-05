@@ -1,0 +1,23 @@
+services:
+  api:
+    build: ./backend/LocalMindAI.Api
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      ConnectionStrings__DefaultConnection: Data Source=/data/LocalMindAI.db
+      Jwt__Key: ${JWT_KEY}
+      AzureOpenAI__ApiKey: ${AZURE_OPENAI_API_KEY}
+      ApplicationInsights__ConnectionString: ${APPLICATIONINSIGHTS_CONNECTION_STRING:-}
+      Cors__AllowedOrigins__0: ${PUBLIC_ORIGIN:-http://localhost}
+    volumes: ["app_data:/data"]
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O - http://localhost:8080/healthz || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+  web:
+    build: ./frontend
+    ports: ["8080:80"]
+    depends_on:
+      api: { condition: service_healthy }
+volumes:
+  app_data:

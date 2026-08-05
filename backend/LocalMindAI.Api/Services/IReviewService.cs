@@ -9,6 +9,8 @@ public interface IReviewService
     Task<ReviewDto> CreateAsync(ReviewDto reviewDto);
     Task<ReviewDto?> UpdateAsync(int id, ReviewDto reviewDto);
     Task<bool> DeleteAsync(int id);
-    Task<GenerateReplyResponse> GenerateReplyAsync(GenerateReplyRequest request);
-    Task<bool> PostReplyAsync(PostReplyRequest request);
+    Task<ReviewReplyDto?> GetReplyAsync(int reviewId);
+    Task<ReviewReplyDto?> GenerateReplyAsync(int reviewId, GenerateReviewReplyRequest request);
+    Task<ReviewReplyDto?> SaveDraftAsync(int reviewId, SaveReviewReplyDraftRequest request);
+    Task<ReviewReplyDto?> PublishReplyAsync(int reviewId);
 }

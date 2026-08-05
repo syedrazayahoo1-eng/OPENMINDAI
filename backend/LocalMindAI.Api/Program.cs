@@ -10,21 +10,26 @@ var builder = WebApplication.CreateBuilder(args);
 
 builder.Logging.ClearProviders();
 builder.Logging.AddConsole();
+builder.Logging.AddJsonConsole();
 
 // -------------------------
 // Services
 // -------------------------
 
 builder.Services.AddControllers();
+builder.Services.AddSignalR();
+builder.Services.AddHealthChecks();
+if (!string.IsNullOrWhiteSpace(builder.Configuration["ApplicationInsights:ConnectionString"]))
+    builder.Services.AddApplicationInsightsTelemetry();
 
 // CORS
 builder.Services.AddCors(options =>
 {
     options.AddPolicy("ReactPolicy", policy =>
     {
-        policy.AllowAnyOrigin()
-              .AllowAnyHeader()
-              .AllowAnyMethod();
+        var origins = builder.Configuration.GetSection("Cors:AllowedOrigins").Get<string[]>() ?? [];
+        if (builder.Environment.IsDevelopment()) policy.AllowAnyOrigin().AllowAnyHeader().AllowAnyMethod();
+        else policy.WithOrigins(origins).AllowAnyHeader().AllowAnyMethod();
     });
 });
 
@@ -83,6 +88,8 @@ builder.Services.AddScoped<LocalMindAI.Api.Services.IGoogleBusinessProfileServic
 builder.Services.AddScoped<LocalMindAI.Api.Services.IWorkflowService, LocalMindAI.Api.Services.WorkflowService>();
 builder.Services.AddSingleton<LocalMindAI.Api.Services.WorkflowExecutionQueue>();
 builder.Services.AddScoped<LocalMindAI.Api.Services.IWorkflowRuntimeService, LocalMindAI.Api.Services.WorkflowRuntimeService>();
+builder.Services.AddScoped<LocalMindAI.Api.Services.IGoogleBusinessPostPublisher, LocalMindAI.Api.Services.GoogleBusinessPostPublisher>();
+builder.Services.AddHostedService<LocalMindAI.Api.Services.GoogleBusinessPostPublisherWorker>();
 builder.Services.AddHostedService<LocalMindAI.Api.Services.WorkflowExecutionWorker>();
 
 // AI Gateway (Azure OpenAI / Ollama providers + factory)
@@ -133,6 +140,7 @@ if (app.Environment.IsDevelopment())
     app.UseSwagger();
     app.UseSwaggerUI();
 }
+else app.UseHsts();
 
 app.UseHttpsRedirection();
 
@@ -145,5 +153,7 @@ app.UseAuthorization();
 
 // Controllers
 app.MapControllers();
+app.MapHub<LocalMindAI.Api.Hubs.WorkflowMonitoringHub>("/hubs/workflow-monitoring");
+app.MapHealthChecks("/healthz");
 
 app.Run();

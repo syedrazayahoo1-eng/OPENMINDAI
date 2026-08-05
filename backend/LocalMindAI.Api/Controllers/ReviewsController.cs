@@ -74,18 +74,13 @@ public class ReviewsController : ControllerBase
         return NoContent();
     }
 
-    [HttpPost("{id}/reply")]
-    public async Task<ActionResult<GenerateReplyResponse>> GenerateReply(int id)
+    [HttpPost("{id}/generate")]
+    public async Task<ActionResult<ReviewReplyDto>> GenerateReply(int id, GenerateReviewReplyRequest request)
     {
         try
         {
-            var request = new GenerateReplyRequest { ReviewId = id };
-            var response = await _reviewService.GenerateReplyAsync(request);
-            return Ok(response);
-        }
-        catch (KeyNotFoundException ex)
-        {
-            return NotFound(new { Message = ex.Message });
+            var response = await _reviewService.GenerateReplyAsync(id, request);
+            return response is null ? NotFound() : Ok(response);
         }
         catch (Exception ex)
         {
@@ -93,19 +88,14 @@ public class ReviewsController : ControllerBase
         }
     }
 
-    [HttpPost("{id}/publish")]
-    public async Task<IActionResult> PublishReply(int id, PostReplyRequest request)
-    {
-        request.ReviewId = id;
-        return await _reviewService.PostReplyAsync(request) ? Ok(new { message = "Reply published." }) : NotFound();
-    }
+    [HttpPost("{id}/draft")]
+    public async Task<ActionResult<ReviewReplyDto>> SaveDraft(int id, SaveReviewReplyDraftRequest request) => (await _reviewService.SaveDraftAsync(id, request)) is { } reply ? Ok(reply) : NotFound();
 
-    [HttpPost("bulk/publish")]
-    public async Task<IActionResult> BulkPublish(IEnumerable<PostReplyRequest> requests)
-    {
-        var results = await Task.WhenAll(requests.Select(_reviewService.PostReplyAsync));
-        return Ok(new { published = results.Count(result => result) });
-    }
+    [HttpPost("{id}/publish")]
+    public async Task<ActionResult<ReviewReplyDto>> PublishReply(int id) => (await _reviewService.PublishReplyAsync(id)) is { } reply ? Ok(reply) : NotFound();
+
+    [HttpGet("{id}/reply")]
+    public async Task<ActionResult<ReviewReplyDto>> GetReply(int id) => (await _reviewService.GetReplyAsync(id)) is { } reply ? Ok(reply) : NotFound();
 
     [HttpGet("analytics")]
     public async Task<IActionResult> Analytics()

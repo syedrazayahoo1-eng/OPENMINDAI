@@ -2,6 +2,8 @@ using LocalMindAI.Api.Data;
 using LocalMindAI.Api.DTOs.Agents;
 using LocalMindAI.Api.Models;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.AspNetCore.SignalR;
+using LocalMindAI.Api.Hubs;
 
 namespace LocalMindAI.Api.Services;
 
@@ -9,8 +11,9 @@ public class AgentService : IAgentService
 {
     private readonly ApplicationDbContext _context;
     private readonly AIService _aiService;
+    private readonly IHubContext<WorkflowMonitoringHub> _hub;
 
-    public AgentService(ApplicationDbContext context, AIService aiService) { _context = context; _aiService = aiService; }
+    public AgentService(ApplicationDbContext context, AIService aiService, IHubContext<WorkflowMonitoringHub> hub) { _context = context; _aiService = aiService; _hub = hub; }
 
     public async Task<IEnumerable<AgentDto>> GetAllAsync() => await _context.Agents
         .AsNoTracking().OrderByDescending(agent => agent.UpdatedAt).Select(agent => Map(agent)).ToListAsync();
@@ -33,6 +36,7 @@ public class AgentService : IAgentService
         };
         _context.Agents.Add(agent);
         await _context.SaveChangesAsync();
+        await PublishStatusAsync(agent);
         return Map(agent);
     }
 
@@ -45,6 +49,7 @@ public class AgentService : IAgentService
         agent.Description = dto.Description.Trim(); agent.Temperature = dto.Temperature; agent.MaxTokens = dto.MaxTokens;
         agent.UpdatedAt = DateTime.UtcNow;
         await _context.SaveChangesAsync();
+        await PublishStatusAsync(agent);
         return Map(agent);
     }
 
@@ -66,6 +71,7 @@ public class AgentService : IAgentService
         if (agent == null) return null;
         agent.Status = "Running"; agent.LastActiveAt = DateTime.UtcNow; agent.UpdatedAt = agent.LastActiveAt;
         await _context.SaveChangesAsync();
+        await PublishStatusAsync(agent);
         return Map(agent);
     }
 
@@ -81,6 +87,7 @@ public class AgentService : IAgentService
         agent.LastActiveAt = DateTime.UtcNow;
         agent.UpdatedAt = agent.LastActiveAt;
         await _context.SaveChangesAsync(cancellationToken);
+        await PublishStatusAsync(agent);
 
         var prompt = $"You are {agent.Name}, working in the {agent.Department} department. {agent.Description}\n\nWorkflow input:\n{input}";
         var output = await _aiService.AskAI(prompt);
@@ -89,6 +96,7 @@ public class AgentService : IAgentService
         agent.LastActiveAt = DateTime.UtcNow;
         agent.UpdatedAt = agent.LastActiveAt;
         await _context.SaveChangesAsync(cancellationToken);
+        await PublishStatusAsync(agent);
         return new AgentExecutionResult(agent.Id, agent.Name, output);
     }
 
@@ -98,8 +106,11 @@ public class AgentService : IAgentService
         if (agent == null) return null;
         agent.Status = status; agent.LastActiveAt = DateTime.UtcNow; agent.UpdatedAt = agent.LastActiveAt;
         await _context.SaveChangesAsync();
+        await PublishStatusAsync(agent);
         return Map(agent);
     }
+
+    private Task PublishStatusAsync(Agent agent) => _hub.Clients.All.SendAsync("AgentStatusChanged", new { agentId = agent.Id, name = agent.Name, status = agent.Status, currentTask = agent.CurrentTask, lastActiveAt = agent.LastActiveAt });
 
     private static string BuildInitials(string name) => string.Concat(name.Split(' ', StringSplitOptions.RemoveEmptyEntries)
         .Take(2).Select(word => char.ToUpperInvariant(word[0])));

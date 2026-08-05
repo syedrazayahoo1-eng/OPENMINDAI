@@ -13,6 +13,11 @@ public class ApplicationDbContext : DbContext
     public DbSet<User> Users { get; set; }
     public DbSet<ChatMessage> ChatMessages => Set<ChatMessage>();
     public DbSet<Review> Reviews => Set<Review>();
+    public DbSet<ReviewReply> ReviewReplies => Set<ReviewReply>();
+    public DbSet<BrandVoice> BrandVoices => Set<BrandVoice>();
+    public DbSet<GoogleBusinessPost> GoogleBusinessPosts => Set<GoogleBusinessPost>();
+    public DbSet<GeneratedImage> GeneratedImages => Set<GeneratedImage>();
+    public DbSet<ScheduledPost> ScheduledPosts => Set<ScheduledPost>();
     public DbSet<Agent> Agents => Set<Agent>();
     public DbSet<GoogleBusinessAccount> GoogleBusinessAccounts => Set<GoogleBusinessAccount>();
     public DbSet<GoogleBusinessLocation> GoogleBusinessLocations => Set<GoogleBusinessLocation>();
@@ -27,6 +32,12 @@ public class ApplicationDbContext : DbContext
         modelBuilder.Entity<User>().HasIndex(user => user.Email).IsUnique();
         modelBuilder.Entity<Agent>().HasIndex(agent => new { agent.Status, agent.UpdatedAt });
         modelBuilder.Entity<Review>().HasIndex(review => review.CreatedAt);
+        modelBuilder.Entity<ReviewReply>().HasIndex(reply => new { reply.ReviewId, reply.UpdatedAt });
+        modelBuilder.Entity<GoogleBusinessPost>().HasIndex(post => new { post.Status, post.UpdatedAt });
+        modelBuilder.Entity<GeneratedImage>().HasIndex(image => image.CreatedAt);
+        modelBuilder.Entity<ScheduledPost>().HasIndex(item => new { item.Status, item.ScheduledTime });
+        modelBuilder.Entity<ScheduledPost>().HasOne(item => item.GoogleBusinessPost).WithMany().HasForeignKey(item => item.GoogleBusinessPostId).OnDelete(DeleteBehavior.Cascade);
+        modelBuilder.Entity<ReviewReply>().HasOne(reply => reply.Review).WithMany().HasForeignKey(reply => reply.ReviewId).OnDelete(DeleteBehavior.Cascade);
         modelBuilder.Entity<Workflow>().HasIndex(workflow => new { workflow.Status, workflow.UpdatedAt });
         modelBuilder.Entity<WorkflowExecution>().HasIndex(execution => new { execution.WorkflowId, execution.CreatedAt });
         modelBuilder.Entity<WorkflowExecutionLog>().HasIndex(log => new { log.WorkflowExecutionId, log.CreatedAt });

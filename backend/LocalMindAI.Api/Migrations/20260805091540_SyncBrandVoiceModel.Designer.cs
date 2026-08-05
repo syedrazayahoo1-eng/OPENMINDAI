@@ -3,6 +3,7 @@ using System;
 using LocalMindAI.Api.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -10,9 +11,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace LocalMindAI.Api.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    partial class ApplicationDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260805091540_SyncBrandVoiceModel")]
+    partial class SyncBrandVoiceModel
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder.HasAnnotation("ProductVersion", "10.0.10");
@@ -165,49 +168,6 @@ namespace LocalMindAI.Api.Migrations
                     b.ToTable("ChatMessages");
                 });
 
-            modelBuilder.Entity("LocalMindAI.Api.Models.GeneratedImage", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("INTEGER");
-
-                    b.Property<string>("AspectRatio")
-                        .IsRequired()
-                        .HasColumnType("TEXT");
-
-                    b.Property<int>("BusinessId")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("ImageUrl")
-                        .IsRequired()
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("Prompt")
-                        .IsRequired()
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("Status")
-                        .IsRequired()
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("Style")
-                        .IsRequired()
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("ThumbnailUrl")
-                        .IsRequired()
-                        .HasColumnType("TEXT");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("CreatedAt");
-
-                    b.ToTable("GeneratedImages");
-                });
-
             modelBuilder.Entity("LocalMindAI.Api.Models.GoogleBusinessAccount", b =>
                 {
                     b.Property<int>("Id")
@@ -268,66 +228,6 @@ namespace LocalMindAI.Api.Migrations
                     b.HasKey("Id");
 
                     b.ToTable("GoogleBusinessLocations");
-                });
-
-            modelBuilder.Entity("LocalMindAI.Api.Models.GoogleBusinessPost", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("INTEGER");
-
-                    b.Property<int>("BusinessId")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<string>("CTA")
-                        .IsRequired()
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("Caption")
-                        .IsRequired()
-                        .HasColumnType("TEXT");
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("Hashtags")
-                        .IsRequired()
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("ImageUrl")
-                        .IsRequired()
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("PostType")
-                        .IsRequired()
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("Prompt")
-                        .IsRequired()
-                        .HasColumnType("TEXT");
-
-                    b.Property<DateTime?>("PublishedTime")
-                        .HasColumnType("TEXT");
-
-                    b.Property<DateTime?>("ScheduledTime")
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("Status")
-                        .IsRequired()
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("Title")
-                        .IsRequired()
-                        .HasColumnType("TEXT");
-
-                    b.Property<DateTime>("UpdatedAt")
-                        .HasColumnType("TEXT");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("Status", "UpdatedAt");
-
-                    b.ToTable("GoogleBusinessPosts");
                 });
 
             modelBuilder.Entity("LocalMindAI.Api.Models.Review", b =>
@@ -403,53 +303,6 @@ namespace LocalMindAI.Api.Migrations
                     b.HasIndex("ReviewId", "UpdatedAt");
 
                     b.ToTable("ReviewReplies");
-                });
-
-            modelBuilder.Entity("LocalMindAI.Api.Models.ScheduledPost", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("INTEGER");
-
-                    b.Property<int>("BusinessId")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("ErrorMessage")
-                        .IsRequired()
-                        .HasColumnType("TEXT");
-
-                    b.Property<int>("GoogleBusinessPostId")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<DateTime?>("LastAttempt")
-                        .HasColumnType("TEXT");
-
-                    b.Property<DateTime?>("PublishedTime")
-                        .HasColumnType("TEXT");
-
-                    b.Property<int>("RetryCount")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<DateTime>("ScheduledTime")
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("Status")
-                        .IsRequired()
-                        .HasColumnType("TEXT");
-
-                    b.Property<DateTime>("UpdatedAt")
-                        .HasColumnType("TEXT");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("GoogleBusinessPostId");
-
-                    b.HasIndex("Status", "ScheduledTime");
-
-                    b.ToTable("ScheduledPosts");
                 });
 
             modelBuilder.Entity("LocalMindAI.Api.Models.User", b =>
@@ -633,17 +486,6 @@ namespace LocalMindAI.Api.Migrations
                         .IsRequired();
 
                     b.Navigation("Review");
-                });
-
-            modelBuilder.Entity("LocalMindAI.Api.Models.ScheduledPost", b =>
-                {
-                    b.HasOne("LocalMindAI.Api.Models.GoogleBusinessPost", "GoogleBusinessPost")
-                        .WithMany()
-                        .HasForeignKey("GoogleBusinessPostId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("GoogleBusinessPost");
                 });
 
             modelBuilder.Entity("LocalMindAI.Api.Models.WorkflowExecution", b =>
