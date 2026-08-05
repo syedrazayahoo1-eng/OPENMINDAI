@@ -12,4 +12,7 @@ public interface IAgentService
     Task<AgentDto?> PauseAsync(int id);
     Task<AgentDto?> ResumeAsync(int id);
     Task<AgentDto?> RestartAsync(int id);
+    Task<AgentExecutionResult> ExecuteAsync(string agentReference, string input, CancellationToken cancellationToken = default);
 }
+
+public sealed record AgentExecutionResult(int AgentId, string AgentName, string Output);

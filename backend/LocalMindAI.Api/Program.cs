@@ -81,6 +81,9 @@ builder.Services.AddScoped<LocalMindAI.Api.Services.IReviewService, LocalMindAI.
 builder.Services.AddScoped<LocalMindAI.Api.Services.IAgentService, LocalMindAI.Api.Services.AgentService>();
 builder.Services.AddScoped<LocalMindAI.Api.Services.IGoogleBusinessProfileService, LocalMindAI.Api.Services.GoogleBusinessProfileService>();
 builder.Services.AddScoped<LocalMindAI.Api.Services.IWorkflowService, LocalMindAI.Api.Services.WorkflowService>();
+builder.Services.AddSingleton<LocalMindAI.Api.Services.WorkflowExecutionQueue>();
+builder.Services.AddScoped<LocalMindAI.Api.Services.IWorkflowRuntimeService, LocalMindAI.Api.Services.WorkflowRuntimeService>();
+builder.Services.AddHostedService<LocalMindAI.Api.Services.WorkflowExecutionWorker>();
 
 // AI Gateway (Azure OpenAI / Ollama providers + factory)
 builder.Services.AddHttpClient();

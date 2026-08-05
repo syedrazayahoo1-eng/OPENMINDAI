@@ -25,19 +25,23 @@ public class AuthController : ControllerBase
 }
 
     [HttpPost("register")]
-    public IActionResult Register(RegisterRequest request)
+    public async Task<IActionResult> Register(RegisterRequest request)
     {
+        var email = request.Email.Trim().ToLowerInvariant();
+        if (await _context.Users.AnyAsync(user => user.Email == email))
+            return Conflict(new { Message = "An account with this email already exists." });
+
         var user = new User
         {
             FullName = request.FullName,
-            Email = request.Email,
+            Email = email,
             PasswordHash = BCrypt.Net.BCrypt.HashPassword(request.Password),
             CompanyName = request.CompanyName,
             CreatedAt = DateTime.UtcNow
         };
 
         _context.Users.Add(user);
-        _context.SaveChanges();
+        await _context.SaveChangesAsync();
 
         return Ok(new
         {

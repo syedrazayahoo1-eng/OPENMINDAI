@@ -8,8 +8,9 @@ namespace LocalMindAI.Api.Services;
 public class AgentService : IAgentService
 {
     private readonly ApplicationDbContext _context;
+    private readonly AIService _aiService;
 
-    public AgentService(ApplicationDbContext context) => _context = context;
+    public AgentService(ApplicationDbContext context, AIService aiService) { _context = context; _aiService = aiService; }
 
     public async Task<IEnumerable<AgentDto>> GetAllAsync() => await _context.Agents
         .AsNoTracking().OrderByDescending(agent => agent.UpdatedAt).Select(agent => Map(agent)).ToListAsync();
@@ -66,6 +67,29 @@ public class AgentService : IAgentService
         agent.Status = "Running"; agent.LastActiveAt = DateTime.UtcNow; agent.UpdatedAt = agent.LastActiveAt;
         await _context.SaveChangesAsync();
         return Map(agent);
+    }
+
+    public async Task<AgentExecutionResult> ExecuteAsync(string agentReference, string input, CancellationToken cancellationToken = default)
+    {
+        var reference = agentReference.Replace(" AI", string.Empty, StringComparison.OrdinalIgnoreCase).Trim();
+        var agent = await _context.Agents.FirstOrDefaultAsync(item => item.Name == agentReference || item.Department == reference, cancellationToken);
+        if (agent == null) throw new InvalidOperationException($"No deployed agent matches '{agentReference}'.");
+        if (agent.Status == "Paused") throw new InvalidOperationException($"Agent '{agent.Name}' is paused.");
+
+        agent.Status = "Running";
+        agent.CurrentTask = "Processing workflow node";
+        agent.LastActiveAt = DateTime.UtcNow;
+        agent.UpdatedAt = agent.LastActiveAt;
+        await _context.SaveChangesAsync(cancellationToken);
+
+        var prompt = $"You are {agent.Name}, working in the {agent.Department} department. {agent.Description}\n\nWorkflow input:\n{input}";
+        var output = await _aiService.AskAI(prompt);
+
+        agent.CurrentTask = "Workflow node completed";
+        agent.LastActiveAt = DateTime.UtcNow;
+        agent.UpdatedAt = agent.LastActiveAt;
+        await _context.SaveChangesAsync(cancellationToken);
+        return new AgentExecutionResult(agent.Id, agent.Name, output);
     }
 
     private async Task<AgentDto?> SetStatusAsync(int id, string status)

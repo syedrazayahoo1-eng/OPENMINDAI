@@ -3,6 +3,7 @@ using System;
 using LocalMindAI.Api.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -10,9 +11,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace LocalMindAI.Api.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    partial class ApplicationDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260805055001_AddWorkflowRuntimeFoundation")]
+    partial class AddWorkflowRuntimeFoundation
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder.HasAnnotation("ProductVersion", "10.0.10");
@@ -74,8 +77,6 @@ namespace LocalMindAI.Api.Migrations
                         .HasColumnType("TEXT");
 
                     b.HasKey("Id");
-
-                    b.HasIndex("Status", "UpdatedAt");
 
                     b.ToTable("Agents");
                 });
@@ -196,8 +197,6 @@ namespace LocalMindAI.Api.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("CreatedAt");
-
                     b.ToTable("Reviews");
                 });
 
@@ -227,9 +226,6 @@ namespace LocalMindAI.Api.Migrations
                         .HasColumnType("TEXT");
 
                     b.HasKey("Id");
-
-                    b.HasIndex("Email")
-                        .IsUnique();
 
                     b.ToTable("Users");
                 });
@@ -262,8 +258,6 @@ namespace LocalMindAI.Api.Migrations
                         .HasColumnType("TEXT");
 
                     b.HasKey("Id");
-
-                    b.HasIndex("Status", "UpdatedAt");
 
                     b.ToTable("Workflows");
                 });
@@ -303,7 +297,7 @@ namespace LocalMindAI.Api.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("WorkflowId", "CreatedAt");
+                    b.HasIndex("WorkflowId");
 
                     b.ToTable("WorkflowExecutions");
                 });
@@ -336,8 +330,6 @@ namespace LocalMindAI.Api.Migrations
                         .HasColumnType("INTEGER");
 
                     b.HasKey("Id");
-
-                    b.HasIndex("WorkflowExecutionId", "CreatedAt");
 
                     b.ToTable("WorkflowExecutionLogs");
                 });
