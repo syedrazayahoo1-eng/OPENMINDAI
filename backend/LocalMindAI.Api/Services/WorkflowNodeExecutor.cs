@@ -9,7 +9,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace LocalMindAI.Api.Services;
 
-public sealed class WorkflowNodeExecutor(ApplicationDbContext context, AIService aiService, IGoogleBusinessPostPublisher postPublisher, IHttpClientFactory httpClientFactory, IConfiguration configuration) : IWorkflowNodeExecutor
+public sealed class WorkflowNodeExecutor(ApplicationDbContext context, AIService aiService, IGoogleBusinessPostPublisher postPublisher, IHttpClientFactory httpClientFactory, IConfiguration configuration, ILogger<WorkflowNodeExecutor> logger) : IWorkflowNodeExecutor
 {
     public async Task<WorkflowNodeExecutionResult> ExecuteAsync(string nodeType, string stepName, JsonElement properties, string input, CancellationToken cancellationToken = default)
     {
@@ -118,10 +118,21 @@ public sealed class WorkflowNodeExecutor(ApplicationDbContext context, AIService
     {
         if (!Uri.TryCreate(url, UriKind.Absolute, out var uri) || uri.Scheme != Uri.UriSchemeHttps)
             throw new InvalidOperationException("Outbound workflow URLs must use HTTPS.");
+        if (uri.IsLoopback || IPAddress.TryParse(uri.Host, out var address) && IsPrivateAddress(address))
+        {
+            logger.LogWarning("Blocked unsafe outbound workflow URL host {Host}.", uri.Host);
+            throw new InvalidOperationException("Outbound workflow URL targets a prohibited host.");
+        }
+        if (uri.Port != 443 && !configuration.GetSection("WorkflowExecution:AllowedHttpPorts").Get<int[]>().Contains(uri.Port))
+        {
+            logger.LogWarning("Blocked outbound workflow URL port {Port} for host {Host}.", uri.Port, uri.Host);
+            throw new InvalidOperationException("Outbound workflow URL port is not allow-listed.");
+        }
         var allowedHosts = configuration.GetSection("WorkflowExecution:AllowedHttpHosts").Get<string[]>() ?? [];
         if (allowedHosts.Length == 0 || !allowedHosts.Contains(uri.Host, StringComparer.OrdinalIgnoreCase))
             throw new InvalidOperationException($"Outbound host '{uri.Host}' is not allow-listed in WorkflowExecution:AllowedHttpHosts.");
     }
+    private static bool IsPrivateAddress(IPAddress address) { var bytes = address.MapToIPv4().GetAddressBytes(); return bytes[0] == 10 || bytes[0] == 127 || bytes[0] == 0 || bytes[0] == 169 && bytes[1] == 254 || bytes[0] == 192 && bytes[1] == 168 || bytes[0] == 172 && bytes[1] is >= 16 and <= 31; }
 
     private string GetRequiredSetting(string key) => configuration[key] ?? throw new InvalidOperationException($"Missing required configuration '{key}'.");
     private static string GetRequiredString(JsonElement properties, string name) => GetString(properties, name) ?? throw new InvalidOperationException($"Node property '{name}' is required.");
