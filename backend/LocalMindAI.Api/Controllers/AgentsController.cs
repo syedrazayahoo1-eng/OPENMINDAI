@@ -15,7 +15,8 @@ public class AgentsController : ControllerBase
 
     [HttpGet] public async Task<ActionResult<IEnumerable<AgentDto>>> GetAll() => Ok(await _agentService.GetAllAsync());
     [HttpGet("{id:int}")] public async Task<ActionResult<AgentDto>> GetById(int id) => await FindAsync(_agentService.GetByIdAsync(id), id);
-    [HttpPost] public async Task<ActionResult<AgentDto>> Create(CreateAgentDto dto)
+    [HttpPost]
+    public async Task<ActionResult<AgentDto>> Create(CreateAgentDto dto)
     {
         var agent = await _agentService.CreateAsync(dto);
         return CreatedAtAction(nameof(GetById), new { id = agent.Id }, agent);

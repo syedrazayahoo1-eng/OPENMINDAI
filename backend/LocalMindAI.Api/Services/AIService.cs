@@ -42,7 +42,8 @@ public class AIService
 
         var request = new AIRequest
         {
-            Prompt = prompt ?? string.Empty, SystemPrompt = await BrandVoicePromptAsync()
+            Prompt = prompt ?? string.Empty,
+            SystemPrompt = await BrandVoicePromptAsync()
         };
 
         var provider = _providerFactory.GetDefaultProvider();
@@ -88,7 +89,8 @@ public class AIService
 
         var request = new AIRequest
         {
-            Prompt = prompt ?? string.Empty, SystemPrompt = await BrandVoicePromptAsync()
+            Prompt = prompt ?? string.Empty,
+            SystemPrompt = await BrandVoicePromptAsync()
         };
 
         var provider = _providerFactory.GetDefaultProvider();

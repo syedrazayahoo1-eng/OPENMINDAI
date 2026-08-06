@@ -201,9 +201,20 @@ Do not invent dates, prices, discounts or claims.
 
     private static GoogleBusinessPostDto ToDto(GoogleBusinessPost post) => new()
     {
-        Id = post.Id, BusinessId = post.BusinessId, PostType = post.PostType, Prompt = post.Prompt, Title = post.Title,
-        Caption = post.Caption, ImageUrl = post.ImageUrl, CTA = post.CTA, Hashtags = post.Hashtags, Status = post.Status,
-        ScheduledTime = post.ScheduledTime, PublishedTime = post.PublishedTime, CreatedAt = post.CreatedAt, UpdatedAt = post.UpdatedAt
+        Id = post.Id,
+        BusinessId = post.BusinessId,
+        PostType = post.PostType,
+        Prompt = post.Prompt,
+        Title = post.Title,
+        Caption = post.Caption,
+        ImageUrl = post.ImageUrl,
+        CTA = post.CTA,
+        Hashtags = post.Hashtags,
+        Status = post.Status,
+        ScheduledTime = post.ScheduledTime,
+        PublishedTime = post.PublishedTime,
+        CreatedAt = post.CreatedAt,
+        UpdatedAt = post.UpdatedAt
     };
     private static ScheduledPostDto ToScheduledDto(ScheduledPost item, GoogleBusinessPost? post) => new() { Id = item.Id, BusinessId = item.BusinessId, GoogleBusinessPostId = item.GoogleBusinessPostId, PostTitle = post?.Title ?? string.Empty, ScheduledTime = item.ScheduledTime, Status = item.Status, RetryCount = item.RetryCount, LastAttempt = item.LastAttempt, PublishedTime = item.PublishedTime, ErrorMessage = item.ErrorMessage, CreatedAt = item.CreatedAt };
 

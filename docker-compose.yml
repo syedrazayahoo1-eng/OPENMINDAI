@@ -1,23 +1,111 @@
+name: digitech
+
 services:
-  api:
-    build: ./backend/LocalMindAI.Api
-    environment:
-      ASPNETCORE_ENVIRONMENT: Production
-      ConnectionStrings__DefaultConnection: Data Source=/data/LocalMindAI.db
-      Jwt__Key: ${JWT_KEY}
-      AzureOpenAI__ApiKey: ${AZURE_OPENAI_API_KEY}
-      ApplicationInsights__ConnectionString: ${APPLICATIONINSIGHTS_CONNECTION_STRING:-}
-      Cors__AllowedOrigins__0: ${PUBLIC_ORIGIN:-http://localhost}
-    volumes: ["app_data:/data"]
+  frontend:
+    build:
+      context: ./frontend
+      target: runtime
+      args:
+        VITE_API_URL: /api
+    ports:
+      - "8080:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+    networks:
+      - digitech-network
     healthcheck:
-      test: ["CMD-SHELL", "wget -q -O - http://localhost:8080/healthz || exit 1"]
+      test: ["CMD-SHELL", "wget -q -O - http://localhost/ >/dev/null 2>&1 || exit 1"]
       interval: 30s
       timeout: 5s
       retries: 3
-  web:
-    build: ./frontend
-    ports: ["8080:80"]
+      start_period: 10s
+
+  backend:
+    build:
+      context: ./backend/LocalMindAI.Api
+      target: runtime
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      ASPNETCORE_URLS: http://+:8080
+      Database__Provider: SqlServer
+      ConnectionStrings__DefaultConnection: Server=sqlserver,1433;Database=DIGITECH;User Id=sa;Password=${SQL_SA_PASSWORD:?SQL_SA_PASSWORD is required};Encrypt=False;TrustServerCertificate=True
+      Jwt__Key: ${JWT_KEY:?JWT_KEY is required}
+      Jwt__Issuer: ${JWT_ISSUER:-LocalMindAI}
+      Jwt__Audience: ${JWT_AUDIENCE:-LocalMindAIUsers}
+      AzureOpenAI__Endpoint: ${AZURE_OPENAI_ENDPOINT:-}
+      AzureOpenAI__ApiKey: ${AZURE_OPENAI_API_KEY:-}
+      AzureOpenAI__DeploymentName: ${AZURE_OPENAI_DEPLOYMENT_NAME:-}
+      GoogleBusiness__ClientId: ${GOOGLE_BUSINESS_CLIENT_ID:-}
+      GoogleBusiness__ClientSecret: ${GOOGLE_BUSINESS_CLIENT_SECRET:-}
+      GoogleBusiness__FrontendCallbackUrl: ${GOOGLE_BUSINESS_FRONTEND_CALLBACK_URL:-http://localhost:8080/reviews}
+      WorkflowExecution__Smtp__Host: ${SMTP_HOST:-}
+      WorkflowExecution__Smtp__Port: ${SMTP_PORT:-587}
+      WorkflowExecution__Smtp__From: ${SMTP_FROM:-}
+      WorkflowExecution__Smtp__Username: ${SMTP_USERNAME:-}
+      WorkflowExecution__Smtp__Password: ${SMTP_PASSWORD:-}
+      WorkflowExecution__Teams__WebhookUrl: ${TEAMS_WEBHOOK_URL:-}
+      Redis__ConnectionString: redis:6379
+      Cors__AllowedOrigins__0: ${PUBLIC_ORIGIN:-http://localhost:8080}
+      AllowedHosts: ${ALLOWED_HOSTS:-localhost;backend}
+      ApplicationInsights__ConnectionString: ${APPLICATIONINSIGHTS_CONNECTION_STRING:-}
+    ports:
+      - "5016:8080"
+    volumes:
+      - backend_uploads:/app/uploads
+      - backend_logs:/app/logs
     depends_on:
-      api: { condition: service_healthy }
+      sqlserver:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - digitech-network
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O - http://localhost:8080/healthz >/dev/null 2>&1 || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis_data:/data
+    networks:
+      - digitech-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  sqlserver:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    environment:
+      ACCEPT_EULA: "Y"
+      MSSQL_PID: Express
+      MSSQL_SA_PASSWORD: ${SQL_SA_PASSWORD:?SQL_SA_PASSWORD is required}
+    ports:
+      - "1433:1433"
+    volumes:
+      - sqlserver_data:/var/opt/mssql
+    networks:
+      - digitech-network
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/mssql-tools18/bin/sqlcmd -C -S localhost -U sa -P \"$$MSSQL_SA_PASSWORD\" -Q \"SELECT 1\" >/dev/null 2>&1 || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
 volumes:
-  app_data:
+  backend_uploads:
+  backend_logs:
+  redis_data:
+  sqlserver_data:
+
+networks:
+  digitech-network:
+    driver: bridge

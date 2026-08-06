@@ -29,10 +29,18 @@ public class AgentService : IAgentService
         var now = DateTime.UtcNow;
         var agent = new Agent
         {
-            Name = dto.Name.Trim(), Initials = BuildInitials(dto.Name), Department = dto.Department.Trim(),
-            CurrentTask = "Ready to begin work", Models = dto.Models.Trim(), Description = dto.Description.Trim(),
-            Temperature = dto.Temperature, MaxTokens = dto.MaxTokens, Performance = 100, LastActiveAt = now,
-            CreatedAt = now, UpdatedAt = now
+            Name = dto.Name.Trim(),
+            Initials = BuildInitials(dto.Name),
+            Department = dto.Department.Trim(),
+            CurrentTask = "Ready to begin work",
+            Models = dto.Models.Trim(),
+            Description = dto.Description.Trim(),
+            Temperature = dto.Temperature,
+            MaxTokens = dto.MaxTokens,
+            Performance = 100,
+            LastActiveAt = now,
+            CreatedAt = now,
+            UpdatedAt = now
         };
         _context.Agents.Add(agent);
         await _context.SaveChangesAsync();
@@ -120,9 +128,20 @@ public class AgentService : IAgentService
 
     private static AgentDto Map(Agent agent) => new()
     {
-        Id = agent.Id, Name = agent.Name, Initials = agent.Initials, Department = agent.Department, Status = agent.Status,
-        CurrentTask = agent.CurrentTask, Performance = agent.Performance, Description = agent.Description,
-        LastActiveAt = agent.LastActiveAt, Models = agent.Models, Tone = agent.Tone, Temperature = agent.Temperature,
-        MaxTokens = agent.MaxTokens, CreatedAt = agent.CreatedAt, UpdatedAt = agent.UpdatedAt
+        Id = agent.Id,
+        Name = agent.Name,
+        Initials = agent.Initials,
+        Department = agent.Department,
+        Status = agent.Status,
+        CurrentTask = agent.CurrentTask,
+        Performance = agent.Performance,
+        Description = agent.Description,
+        LastActiveAt = agent.LastActiveAt,
+        Models = agent.Models,
+        Tone = agent.Tone,
+        Temperature = agent.Temperature,
+        MaxTokens = agent.MaxTokens,
+        CreatedAt = agent.CreatedAt,
+        UpdatedAt = agent.UpdatedAt
     };
 }

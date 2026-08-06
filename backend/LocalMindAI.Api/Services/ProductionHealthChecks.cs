@@ -31,7 +31,9 @@ public sealed class PlatformDependenciesHealthCheck(IExternalServicesDiagnostics
         var googleConfigured = json.GetProperty("googleBusiness").GetProperty("configured").GetBoolean();
         var smtpConfigured = !string.IsNullOrWhiteSpace(configuration["WorkflowExecution:Smtp:Host"]) && !string.IsNullOrWhiteSpace(configuration["WorkflowExecution:Smtp:From"]);
         var teamsConfigured = !string.IsNullOrWhiteSpace(configuration["WorkflowExecution:Teams:WebhookUrl"]);
-        var data = new Dictionary<string, object> { ["signalR"] = "ready", ["signalRConnections"] = presence.ConnectionCount, ["azureOpenAi"] = azureConfigured ? "configured" : "not-configured", ["googleBusiness"] = googleConfigured ? "configured" : "not-configured", ["smtp"] = smtpConfigured ? "configured" : "not-configured", ["teams"] = teamsConfigured ? "configured" : "not-configured" };
+        var redisConfigured = !string.IsNullOrWhiteSpace(configuration["Redis:ConnectionString"]);
+        var blobConfigured = string.Equals(configuration["Storage:Provider"], "AzureBlob", StringComparison.OrdinalIgnoreCase) && (!string.IsNullOrWhiteSpace(configuration["Storage:AzureBlob:ConnectionString"]) || Uri.TryCreate(configuration["Storage:AzureBlob:ServiceUri"], UriKind.Absolute, out _));
+        var data = new Dictionary<string, object> { ["signalR"] = redisConfigured ? "redis-backplane" : "in-process", ["signalRConnections"] = presence.ConnectionCount, ["redis"] = redisConfigured ? "configured" : "not-configured", ["blobStorage"] = blobConfigured ? "configured" : "local", ["azureOpenAi"] = azureConfigured ? "configured" : "not-configured", ["googleBusiness"] = googleConfigured ? "configured" : "not-configured", ["smtp"] = smtpConfigured ? "configured" : "not-configured", ["teams"] = teamsConfigured ? "configured" : "not-configured" };
         return Task.FromResult(azureConfigured ? HealthCheckResult.Healthy("Platform dependencies are ready.", data) : HealthCheckResult.Degraded("One or more optional external integrations are not configured.", null, data));
     }
 }

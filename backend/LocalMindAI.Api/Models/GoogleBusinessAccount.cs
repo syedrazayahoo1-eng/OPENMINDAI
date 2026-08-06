@@ -1,3 +1,4 @@
 namespace LocalMindAI.Api.Models;
+
 public class GoogleBusinessAccount { public int Id { get; set; } public string GoogleAccountId { get; set; } = string.Empty; public string Email { get; set; } = string.Empty; public string AccessToken { get; set; } = string.Empty; public string RefreshToken { get; set; } = string.Empty; public DateTime TokenExpiresAt { get; set; } public DateTime ConnectedAt { get; set; } = DateTime.UtcNow; }
 public class GoogleBusinessLocation { public int Id { get; set; } public int AccountId { get; set; } public string GoogleLocationId { get; set; } = string.Empty; public string Name { get; set; } = string.Empty; public string Address { get; set; } = string.Empty; public DateTime LastSyncedAt { get; set; } = DateTime.UtcNow; }

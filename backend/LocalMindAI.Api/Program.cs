@@ -9,8 +9,13 @@ using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.AspNetCore.RateLimiting;
 using System.Threading.RateLimiting;
 using System.Text.Json;
+using Azure.Identity;
+using LocalMindAI.Api.Services.Storage;
 
 var builder = WebApplication.CreateBuilder(args);
+
+if (Uri.TryCreate(builder.Configuration["KeyVault:Uri"], UriKind.Absolute, out var keyVaultUri))
+    builder.Configuration.AddAzureKeyVault(keyVaultUri, new DefaultAzureCredential());
 
 var jwtKey = builder.Configuration["Jwt:Key"];
 if (string.IsNullOrWhiteSpace(jwtKey) || jwtKey.Length < 32)
@@ -28,11 +33,21 @@ builder.Logging.AddJsonConsole();
 // -------------------------
 
 builder.Services.AddControllers();
-builder.Services.AddSignalR();
+var redisConnectionString = builder.Configuration["Redis:ConnectionString"];
+var signalR = builder.Services.AddSignalR();
+if (!string.IsNullOrWhiteSpace(redisConnectionString))
+{
+    builder.Services.AddStackExchangeRedisCache(options => options.Configuration = redisConnectionString);
+    signalR.AddStackExchangeRedis(redisConnectionString);
+}
+else builder.Services.AddDistributedMemoryCache();
 builder.Services.AddSingleton<LocalMindAI.Api.Hubs.HubPresenceRegistry>();
+builder.Services.AddSingleton<LocalMindAI.Api.Services.IMonitoringService, LocalMindAI.Api.Services.MonitoringService>();
 builder.Services.AddHealthChecks()
     .AddCheck<LocalMindAI.Api.Services.DatabaseHealthCheck>("database", tags: ["ready"])
-    .AddCheck<LocalMindAI.Api.Services.PlatformDependenciesHealthCheck>("platform-dependencies", tags: ["ready"]);
+    .AddCheck<LocalMindAI.Api.Services.PlatformDependenciesHealthCheck>("platform-dependencies", tags: ["ready"])
+    .AddCheck<LocalMindAI.Api.Services.RedisHealthCheck>("redis", tags: ["ready"])
+    .AddCheck<LocalMindAI.Api.Services.BlobStorageHealthCheck>("blob-storage", tags: ["ready"]);
 builder.Services.AddRateLimiter(options =>
 {
     options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
@@ -57,10 +72,26 @@ builder.Services.AddCors(options =>
     });
 });
 
-// Database
+var databaseProvider = builder.Configuration["Database:Provider"] ?? "Sqlite";
+var connectionString = builder.Configuration.GetConnectionString("DefaultConnection")
+    ?? throw new InvalidOperationException("ConnectionStrings:DefaultConnection is required.");
+
 builder.Services.AddDbContext<ApplicationDbContext>(options =>
-    options.UseSqlite(
-        builder.Configuration.GetConnectionString("DefaultConnection")));
+{
+    if (string.Equals(databaseProvider, "SqlServer", StringComparison.OrdinalIgnoreCase))
+    {
+        options.UseSqlServer(connectionString, sqlServer => sqlServer.EnableRetryOnFailure());
+        return;
+    }
+
+    if (string.Equals(databaseProvider, "Sqlite", StringComparison.OrdinalIgnoreCase))
+    {
+        options.UseSqlite(connectionString);
+        return;
+    }
+
+    throw new InvalidOperationException("Database:Provider must be either Sqlite or SqlServer.");
+});
 
 // JWT Authentication
 builder.Services.AddAuthentication(options =>
@@ -105,6 +136,9 @@ builder.Services.AddScoped<LocalMindAI.Api.Services.IAuthTokenService, LocalMind
 builder.Services.AddSingleton<LocalMindAI.Api.Services.IExternalServicesDiagnostics, LocalMindAI.Api.Services.ExternalServicesDiagnostics>();
 builder.Services.AddSingleton<LocalMindAI.Api.Services.ExternalHttpRetry>();
 builder.Services.AddSingleton<LocalMindAI.Api.Services.GoogleOAuthStateStore>();
+if (string.Equals(builder.Configuration["Storage:Provider"], "AzureBlob", StringComparison.OrdinalIgnoreCase))
+    builder.Services.AddSingleton<IFileStorageProvider, AzureBlobStorageProvider>();
+else builder.Services.AddSingleton<IFileStorageProvider, LocalFileStorageProvider>();
 
 // AI Service
 builder.Services.AddScoped<LocalMindAI.Api.Services.AIService>();
@@ -120,6 +154,7 @@ builder.Services.AddScoped<LocalMindAI.Api.Services.IWorkflowNodeExecutor, Local
 builder.Services.AddScoped<LocalMindAI.Api.Services.IGoogleBusinessPostPublisher, LocalMindAI.Api.Services.GoogleBusinessPostPublisher>();
 builder.Services.AddHostedService<LocalMindAI.Api.Services.GoogleBusinessPostPublisherWorker>();
 builder.Services.AddHostedService<LocalMindAI.Api.Services.WorkflowExecutionWorker>();
+builder.Services.AddHostedService<LocalMindAI.Api.Services.MonitoringBroadcastWorker>();
 
 // AI Gateway (Azure OpenAI / Ollama providers + factory)
 builder.Services.AddHttpClient("ExternalServices", client => client.Timeout = TimeSpan.FromSeconds(30));
@@ -163,7 +198,15 @@ var app = builder.Build();
 // Middleware
 // -------------------------
 
+app.UseMiddleware<LocalMindAI.Api.Middleware.CorrelationMiddleware>();
 app.UseMiddleware<LocalMindAI.Api.Middleware.ErrorHandlingMiddleware>();
+app.Use(async (context, next) =>
+{
+    var stopwatch = System.Diagnostics.Stopwatch.StartNew();
+    await next();
+    stopwatch.Stop();
+    context.RequestServices.GetRequiredService<LocalMindAI.Api.Services.IMonitoringService>().RecordRequest(context.Request.Path, context.Response.StatusCode, stopwatch.Elapsed.TotalMilliseconds);
+});
 
 if (app.Environment.IsDevelopment())
 {

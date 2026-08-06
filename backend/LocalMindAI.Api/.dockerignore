@@ -1,0 +1,9 @@
+.git
+.vscode
+bin
+obj
+logs
+artifacts
+*.db
+*.log
+.env

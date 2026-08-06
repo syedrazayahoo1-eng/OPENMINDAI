@@ -1,0 +1,128 @@
+name: Deploy Production
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: digitech-production
+  cancel-in-progress: false
+
+env:
+  BACKEND_PATH: backend/LocalMindAI.Api
+  FRONTEND_PATH: frontend
+
+jobs:
+  deploy:
+    name: Build and deploy production
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+      - name: Verify backend release build
+        run: dotnet restore && dotnet build -c Release --no-restore
+        working-directory: backend/LocalMindAI.Api
+      - uses: azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.x
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Verify frontend release build
+        run: npm ci && npm run lint && npm run build
+        working-directory: frontend
+      - name: Build frontend container image
+        run: docker build --file frontend/Dockerfile --target runtime --tag "$ACR_LOGIN_SERVER/digitech-web:$GITHUB_SHA" frontend
+        env:
+          ACR_LOGIN_SERVER: ${{ secrets.ACR_LOGIN_SERVER }}
+      - name: Build backend container image
+        run: docker build --file backend/LocalMindAI.Api/Dockerfile --target runtime --tag "$ACR_LOGIN_SERVER/digitech-api:$GITHUB_SHA" backend/LocalMindAI.Api
+        env:
+          ACR_LOGIN_SERVER: ${{ secrets.ACR_LOGIN_SERVER }}
+      - name: Authenticate and push immutable images
+        run: |
+          az acr login --name "$ACR_NAME"
+          docker push "$ACR_LOGIN_SERVER/digitech-api:$GITHUB_SHA"
+          docker push "$ACR_LOGIN_SERVER/digitech-web:$GITHUB_SHA"
+        env:
+          ACR_NAME: ${{ secrets.ACR_NAME }}
+          ACR_LOGIN_SERVER: ${{ secrets.ACR_LOGIN_SERVER }}
+      - name: Configure API settings from GitHub Secrets
+        run: |
+          az webapp deployment slot create --resource-group "$AZURE_RESOURCE_GROUP" --name "$AZURE_API_APP_NAME" --slot staging || true
+          az webapp config appsettings set --resource-group "$AZURE_RESOURCE_GROUP" --name "$AZURE_API_APP_NAME" --settings \
+            "ASPNETCORE_ENVIRONMENT=Production" \
+            "KeyVault__Uri=$KEY_VAULT_URI" \
+            "ConnectionStrings__DefaultConnection=$AZURE_SQL_CONNECTION_STRING" \
+            "Redis__ConnectionString=$AZURE_REDIS_CONNECTION_STRING" \
+            "Storage__AzureBlob__ServiceUri=$AZURE_BLOB_SERVICE_URI" \
+            "ApplicationInsights__ConnectionString=$APPLICATIONINSIGHTS_CONNECTION_STRING" --slot staging
+        env:
+          AZURE_RESOURCE_GROUP: ${{ secrets.AZURE_RESOURCE_GROUP }}
+          AZURE_API_APP_NAME: ${{ secrets.AZURE_API_APP_NAME_PROD }}
+          KEY_VAULT_URI: ${{ secrets.KEY_VAULT_URI }}
+          AZURE_SQL_CONNECTION_STRING: ${{ secrets.AZURE_SQL_CONNECTION_STRING }}
+          AZURE_REDIS_CONNECTION_STRING: ${{ secrets.AZURE_REDIS_CONNECTION_STRING }}
+          AZURE_BLOB_SERVICE_URI: ${{ secrets.AZURE_BLOB_SERVICE_URI }}
+          APPLICATIONINSIGHTS_CONNECTION_STRING: ${{ secrets.APPLICATIONINSIGHTS_CONNECTION_STRING }}
+      - name: Deploy API image after a successful push
+        run: az webapp config container set --resource-group "$AZURE_RESOURCE_GROUP" --name "$AZURE_API_APP_NAME" --slot staging --docker-custom-image-name "$ACR_LOGIN_SERVER/digitech-api:$GITHUB_SHA" --docker-registry-server-url "https://$ACR_LOGIN_SERVER" --docker-registry-server-user "$ACR_USERNAME" --docker-registry-server-password "$ACR_PASSWORD"
+        env:
+          AZURE_RESOURCE_GROUP: ${{ secrets.AZURE_RESOURCE_GROUP }}
+          AZURE_API_APP_NAME: ${{ secrets.AZURE_API_APP_NAME_PROD }}
+          ACR_LOGIN_SERVER: ${{ secrets.ACR_LOGIN_SERVER }}
+          ACR_USERNAME: ${{ secrets.ACR_USERNAME }}
+          ACR_PASSWORD: ${{ secrets.ACR_PASSWORD }}
+      - name: Verify staging API health before swap
+        run: curl --fail --retry 12 --retry-delay 10 "https://$AZURE_API_APP_NAME-staging.azurewebsites.net/healthz"
+        env:
+          AZURE_API_APP_NAME: ${{ secrets.AZURE_API_APP_NAME_PROD }}
+      - name: Swap healthy API staging slot
+        run: az webapp deployment slot swap --resource-group "$AZURE_RESOURCE_GROUP" --name "$AZURE_API_APP_NAME" --slot staging --target-slot production
+        env:
+          AZURE_RESOURCE_GROUP: ${{ secrets.AZURE_RESOURCE_GROUP }}
+          AZURE_API_APP_NAME: ${{ secrets.AZURE_API_APP_NAME_PROD }}
+      - name: Deploy web image after a successful API deployment
+        run: |
+          az webapp deployment slot create --resource-group "$AZURE_RESOURCE_GROUP" --name "$AZURE_WEB_APP_NAME" --slot staging || true
+          az webapp config container set --resource-group "$AZURE_RESOURCE_GROUP" --name "$AZURE_WEB_APP_NAME" --slot staging --docker-custom-image-name "$ACR_LOGIN_SERVER/digitech-web:$GITHUB_SHA" --docker-registry-server-url "https://$ACR_LOGIN_SERVER" --docker-registry-server-user "$ACR_USERNAME" --docker-registry-server-password "$ACR_PASSWORD"
+        env:
+          AZURE_RESOURCE_GROUP: ${{ secrets.AZURE_RESOURCE_GROUP }}
+          AZURE_WEB_APP_NAME: ${{ secrets.AZURE_WEB_APP_NAME_PROD }}
+          ACR_LOGIN_SERVER: ${{ secrets.ACR_LOGIN_SERVER }}
+          ACR_USERNAME: ${{ secrets.ACR_USERNAME }}
+          ACR_PASSWORD: ${{ secrets.ACR_PASSWORD }}
+      - name: Verify staging web health before swap
+        run: curl --fail --retry 12 --retry-delay 10 "https://$AZURE_WEB_APP_NAME-staging.azurewebsites.net/"
+        env:
+          AZURE_WEB_APP_NAME: ${{ secrets.AZURE_WEB_APP_NAME_PROD }}
+      - name: Swap healthy web staging slot
+        run: az webapp deployment slot swap --resource-group "$AZURE_RESOURCE_GROUP" --name "$AZURE_WEB_APP_NAME" --slot staging --target-slot production
+        env:
+          AZURE_RESOURCE_GROUP: ${{ secrets.AZURE_RESOURCE_GROUP }}
+          AZURE_WEB_APP_NAME: ${{ secrets.AZURE_WEB_APP_NAME_PROD }}
+      - name: Upload deployment diagnostics
+        if: always()
+        run: |
+          az webapp log tail --resource-group "$AZURE_RESOURCE_GROUP" --name "$AZURE_API_APP_NAME" --timeout 30 > deployment-api.log 2>&1 || true
+          az webapp log tail --resource-group "$AZURE_RESOURCE_GROUP" --name "$AZURE_WEB_APP_NAME" --timeout 30 > deployment-web.log 2>&1 || true
+        env:
+          AZURE_RESOURCE_GROUP: ${{ secrets.AZURE_RESOURCE_GROUP }}
+          AZURE_API_APP_NAME: ${{ secrets.AZURE_API_APP_NAME_PROD }}
+          AZURE_WEB_APP_NAME: ${{ secrets.AZURE_WEB_APP_NAME_PROD }}
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: production-deployment-logs
+          path: deployment-*.log
+          if-no-files-found: warn
+          retention-days: 30

@@ -1,2 +1,3 @@
 namespace LocalMindAI.Api.Models;
+
 public class BrandVoice { public int Id { get; set; } public string BusinessName { get; set; } = string.Empty; public string BusinessDescription { get; set; } = string.Empty; public string Industry { get; set; } = string.Empty; public string WritingStyle { get; set; } = "Professional"; public string Tone { get; set; } = "Formal"; public bool EmojiEnabled { get; set; } public string ReplyLength { get; set; } = "Medium"; public bool CallToActionEnabled { get; set; } public string Language { get; set; } = "English"; public string Keywords { get; set; } = string.Empty; public string Audience { get; set; } = string.Empty; public DateTime CreatedAt { get; set; } = DateTime.UtcNow; public DateTime UpdatedAt { get; set; } = DateTime.UtcNow; }

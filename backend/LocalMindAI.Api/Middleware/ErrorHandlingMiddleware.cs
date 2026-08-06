@@ -27,6 +27,7 @@ public class ErrorHandlingMiddleware
         }
         catch (Exception ex)
         {
+            context.RequestServices.GetRequiredService<LocalMindAI.Api.Services.IMonitoringService>().RecordException("UnhandledRequest", ex);
             _logger.LogError(
                 ex,
                 "Unhandled exception. Message: {Message}. Inner exception: {InnerException}. Stack trace: {StackTrace}",
