@@ -3,6 +3,7 @@ using System;
 using LocalMindAI.Api.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -10,9 +11,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace LocalMindAI.Api.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    partial class ApplicationDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260805115616_SeedCustomerPipelines")]
+    partial class SeedCustomerPipelines
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder.HasAnnotation("ProductVersion", "10.0.10");
@@ -535,50 +538,6 @@ namespace LocalMindAI.Api.Migrations
                     b.ToTable("GoogleBusinessPosts");
                 });
 
-            modelBuilder.Entity("LocalMindAI.Api.Models.RefreshToken", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("INTEGER");
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("CreatedByIp")
-                        .HasColumnType("TEXT");
-
-                    b.Property<DateTime>("ExpiresAt")
-                        .HasColumnType("TEXT");
-
-                    b.Property<bool>("RememberMe")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<string>("ReplacedByTokenHash")
-                        .HasColumnType("TEXT");
-
-                    b.Property<DateTime?>("RevokedAt")
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("RevokedByIp")
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("TokenHash")
-                        .IsRequired()
-                        .HasColumnType("TEXT");
-
-                    b.Property<int>("UserId")
-                        .HasColumnType("INTEGER");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("TokenHash")
-                        .IsUnique();
-
-                    b.HasIndex("UserId", "ExpiresAt");
-
-                    b.ToTable("RefreshTokens");
-                });
-
             modelBuilder.Entity("LocalMindAI.Api.Models.Review", b =>
                 {
                     b.Property<int>("Id")
@@ -895,17 +854,6 @@ namespace LocalMindAI.Api.Migrations
                     b.Navigation("Customer");
                 });
 
-            modelBuilder.Entity("LocalMindAI.Api.Models.RefreshToken", b =>
-                {
-                    b.HasOne("LocalMindAI.Api.Models.User", "User")
-                        .WithMany("RefreshTokens")
-                        .HasForeignKey("UserId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("User");
-                });
-
             modelBuilder.Entity("LocalMindAI.Api.Models.ReviewReply", b =>
                 {
                     b.HasOne("LocalMindAI.Api.Models.Review", "Review")
@@ -951,11 +899,6 @@ namespace LocalMindAI.Api.Migrations
                     b.Navigation("Activities");
 
                     b.Navigation("Notes");
-                });
-
-            modelBuilder.Entity("LocalMindAI.Api.Models.User", b =>
-                {
-                    b.Navigation("RefreshTokens");
                 });
 
             modelBuilder.Entity("LocalMindAI.Api.Models.Workflow", b =>

@@ -333,8 +333,10 @@ public class ReviewService : IReviewService
         };
     }
 
-    private Task PublishReviewUpdatedAsync(ReviewDto review) =>
-        _hub.Clients.All.SendAsync("ReviewUpdated", review);
+    private Task PublishReviewUpdatedAsync(ReviewDto review) => Task.WhenAll(
+        _hub.Clients.All.SendAsync("ReviewUpdated", review),
+        _hub.Clients.All.SendAsync("DashboardUpdated", new { module = "reviews", entityId = review.Id, status = review.IsReplied ? "Replied" : "Updated", occurredAt = DateTime.UtcNow }),
+        _hub.Clients.All.SendAsync("Notification", new { title = "Review updated", message = $"Review from {review.ReviewerName} was updated.", level = "Information", occurredAt = DateTime.UtcNow }));
 
     private sealed class RawAnalysis
     {

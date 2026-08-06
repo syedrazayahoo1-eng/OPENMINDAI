@@ -110,7 +110,10 @@ public class AgentService : IAgentService
         return Map(agent);
     }
 
-    private Task PublishStatusAsync(Agent agent) => _hub.Clients.All.SendAsync("AgentStatusChanged", new { agentId = agent.Id, name = agent.Name, status = agent.Status, currentTask = agent.CurrentTask, lastActiveAt = agent.LastActiveAt });
+    private Task PublishStatusAsync(Agent agent) => Task.WhenAll(
+        _hub.Clients.All.SendAsync("AgentStatusChanged", new { agentId = agent.Id, name = agent.Name, status = agent.Status, currentTask = agent.CurrentTask, lastActiveAt = agent.LastActiveAt }),
+        _hub.Clients.All.SendAsync("DashboardUpdated", new { module = "agents", entityId = agent.Id, status = agent.Status, occurredAt = DateTime.UtcNow }),
+        _hub.Clients.All.SendAsync("Notification", new { title = $"{agent.Name} {agent.Status}", message = agent.CurrentTask, level = "Information", occurredAt = DateTime.UtcNow }));
 
     private static string BuildInitials(string name) => string.Concat(name.Split(' ', StringSplitOptions.RemoveEmptyEntries)
         .Take(2).Select(word => char.ToUpperInvariant(word[0])));

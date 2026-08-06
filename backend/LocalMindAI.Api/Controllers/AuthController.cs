@@ -1,13 +1,12 @@
+using System.IdentityModel.Tokens.Jwt;
+using System.Security.Claims;
 using LocalMindAI.Api.Data;
 using LocalMindAI.Api.DTOs;
 using LocalMindAI.Api.Models;
-using Microsoft.AspNetCore.Mvc;
+using LocalMindAI.Api.Services;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.IdentityModel.Tokens;
-using System.IdentityModel.Tokens.Jwt;
-using System.Security.Claims;
-using System.Text;
 
 namespace LocalMindAI.Api.Controllers;
 
@@ -16,109 +15,104 @@ namespace LocalMindAI.Api.Controllers;
 public class AuthController : ControllerBase
 {
     private readonly ApplicationDbContext _context;
-    private readonly IConfiguration _configuration;
+    private readonly IAuthTokenService _tokenService;
 
-    public AuthController(ApplicationDbContext context, IConfiguration configuration)
-{
-    _context = context;
-    _configuration = configuration;
-}
+    public AuthController(ApplicationDbContext context, IAuthTokenService tokenService)
+    {
+        _context = context;
+        _tokenService = tokenService;
+    }
 
     [HttpPost("register")]
-    public async Task<IActionResult> Register(RegisterRequest request)
+    public async Task<IActionResult> Register(RegisterRequest request, CancellationToken cancellationToken)
     {
         var email = request.Email.Trim().ToLowerInvariant();
-        if (await _context.Users.AnyAsync(user => user.Email == email))
-            return Conflict(new { Message = "An account with this email already exists." });
+        if (await _context.Users.AnyAsync(user => user.Email == email, cancellationToken))
+            return Conflict(new { message = "An account with this email already exists." });
 
         var user = new User
         {
-            FullName = request.FullName,
+            FullName = request.FullName.Trim(),
             Email = email,
             PasswordHash = BCrypt.Net.BCrypt.HashPassword(request.Password),
-            CompanyName = request.CompanyName,
+            CompanyName = request.CompanyName.Trim(),
             CreatedAt = DateTime.UtcNow
         };
 
         _context.Users.Add(user);
-        await _context.SaveChangesAsync();
-
-        return Ok(new
-        {
-            Message = "User registered successfully!"
-        });
+        await _context.SaveChangesAsync(cancellationToken);
+        return Ok(new { message = "User registered successfully!" });
     }
 
     [HttpPost("login")]
-    public IActionResult Login(LoginRequest request)
+    public async Task<IActionResult> Login(LoginRequest request, CancellationToken cancellationToken)
     {
-        var user = _context.Users.FirstOrDefault(x => x.Email == request.Email);
+        var email = request.Email.Trim().ToLowerInvariant();
+        var user = await _context.Users.SingleOrDefaultAsync(item => item.Email == email, cancellationToken);
+        if (user is null || !BCrypt.Net.BCrypt.Verify(request.Password, user.PasswordHash))
+            return Unauthorized(new { message = "Invalid email or password." });
 
-        if (user == null)
+        var tokens = await _tokenService.IssueAsync(user, request.RememberMe, GetClientIpAddress(), cancellationToken);
+        return Ok(new
         {
-            return BadRequest(new
-            {
-                Message = "Invalid email or password."
-            });
-        }
-
-        bool passwordCorrect = BCrypt.Net.BCrypt.Verify(request.Password, user.PasswordHash);
-
-        if (!passwordCorrect)
-        {
-            return BadRequest(new
-            {
-                Message = "Invalid email or password."
-            });
-        }
-
-       var claims = new[]
-{
-    new Claim(JwtRegisteredClaimNames.Sub, user.Email),
-    new Claim(JwtRegisteredClaimNames.Email, user.Email),
-    new Claim("FullName", user.FullName)
-};
-
-var key = new SymmetricSecurityKey(
-    Encoding.UTF8.GetBytes(_configuration["Jwt:Key"]!));
-
-var creds = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
-
-var token = new JwtSecurityToken(
-    issuer: _configuration["Jwt:Issuer"],
-    audience: _configuration["Jwt:Audience"],
-    claims: claims,
-    expires: DateTime.UtcNow.AddMinutes(
-        Convert.ToDouble(_configuration["Jwt:ExpiryInMinutes"])),
-    signingCredentials: creds
-);
-
-var jwt = new JwtSecurityTokenHandler().WriteToken(token);
-
-return Ok(new
-{
-    message = "Login successful!",
-    token = jwt,
-    user = new
-    {
-        fullName = user.FullName,
-        email = user.Email,
-        companyName = user.CompanyName
+            message = "Login successful!",
+            accessToken = tokens.AccessToken,
+            token = tokens.Token,
+            refreshToken = tokens.RefreshToken,
+            accessTokenExpiresAt = tokens.AccessTokenExpiresAt,
+            refreshTokenExpiresAt = tokens.RefreshTokenExpiresAt,
+            user = new { fullName = user.FullName, email = user.Email, companyName = user.CompanyName }
+        });
     }
-});
-}
-[Authorize]
-[HttpGet("profile")]
-public IActionResult Profile()
-{
-    var email = User.FindFirst(JwtRegisteredClaimNames.Email)?.Value;
-    var fullName = User.FindFirst("FullName")?.Value;
 
-    return Ok(new
+    [HttpPost("refresh")]
+    public async Task<IActionResult> Refresh(RefreshTokenRequest request, CancellationToken cancellationToken)
     {
-        Message = "You are authenticated!",
-        Email = email,
-        FullName = fullName
-    });
-}
+        var tokens = await _tokenService.RotateAsync(request.RefreshToken, GetClientIpAddress(), cancellationToken);
+        if (tokens is null)
+            return Unauthorized(new { message = "The refresh token is invalid, expired, or has been revoked." });
+
+        return Ok(new
+        {
+            accessToken = tokens.AccessToken,
+            token = tokens.Token,
+            refreshToken = tokens.RefreshToken,
+            accessTokenExpiresAt = tokens.AccessTokenExpiresAt,
+            refreshTokenExpiresAt = tokens.RefreshTokenExpiresAt
+        });
+    }
+
+    [Authorize]
+    [HttpPost("logout")]
+    public async Task<IActionResult> Logout(RefreshTokenRequest request, CancellationToken cancellationToken)
+    {
+        await _tokenService.RevokeAsync(request.RefreshToken, GetClientIpAddress(), cancellationToken);
+        return NoContent();
+    }
+
+    [Authorize]
+    [HttpPost("revoke")]
+    public async Task<IActionResult> RevokeAllDevices(CancellationToken cancellationToken)
+    {
+        var userIdValue = User.FindFirstValue(ClaimTypes.NameIdentifier) ?? User.FindFirstValue(JwtRegisteredClaimNames.Sub);
+        if (!int.TryParse(userIdValue, out var userId))
+            return Unauthorized();
+
+        var revoked = await _tokenService.RevokeAllAsync(userId, GetClientIpAddress(), cancellationToken);
+        return Ok(new { message = "All signed-in devices have been revoked.", revoked });
+    }
+
+    [Authorize]
+    [HttpGet("profile")]
+    public IActionResult Profile()
+    {
+        return Ok(new
+        {
+            message = "You are authenticated!",
+            email = User.FindFirstValue(JwtRegisteredClaimNames.Email),
+            fullName = User.FindFirstValue("FullName")
+        });
+    }
+
+    private string? GetClientIpAddress() => HttpContext.Connection.RemoteIpAddress?.ToString();
 }
