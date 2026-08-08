@@ -3,6 +3,7 @@ using System;
 using LocalMindAI.Api.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -10,9 +11,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace LocalMindAI.Api.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    partial class ApplicationDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260806133351_AddSecurityCenter")]
+    partial class AddSecurityCenter
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder.HasAnnotation("ProductVersion", "10.0.10");
@@ -618,50 +621,6 @@ namespace LocalMindAI.Api.Migrations
                     b.ToTable("GoogleBusinessPosts");
                 });
 
-            modelBuilder.Entity("LocalMindAI.Api.Models.IntegrationConfiguration", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("INTEGER");
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("EncryptedConfiguration")
-                        .IsRequired()
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("LastTestMessage")
-                        .HasColumnType("TEXT");
-
-                    b.Property<DateTime?>("LastTestedAt")
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("Provider")
-                        .IsRequired()
-                        .HasMaxLength(64)
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("PublicConfiguration")
-                        .IsRequired()
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("Status")
-                        .IsRequired()
-                        .HasMaxLength(32)
-                        .HasColumnType("TEXT");
-
-                    b.Property<DateTime>("UpdatedAt")
-                        .HasColumnType("TEXT");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("Provider")
-                        .IsUnique();
-
-                    b.ToTable("IntegrationConfigurations");
-                });
-
             modelBuilder.Entity("LocalMindAI.Api.Models.LoginHistory", b =>
                 {
                     b.Property<int>("Id")
@@ -996,11 +955,6 @@ namespace LocalMindAI.Api.Migrations
                         {
                             Id = 34,
                             Name = "Settings.Manage"
-                        },
-                        new
-                        {
-                            Id = 35,
-                            Name = "Analytics.View"
                         });
                 });
 

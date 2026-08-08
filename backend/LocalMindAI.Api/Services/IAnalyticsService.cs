@@ -1,0 +1,3 @@
+using LocalMindAI.Api.DTOs;
+namespace LocalMindAI.Api.Services;
+public interface IAnalyticsService { Task<AnalyticsDto> OverviewAsync(AnalyticsRangeQuery q,CancellationToken c=default); Task<AnalyticsDto> CustomersAsync(AnalyticsRangeQuery q,CancellationToken c=default); Task<AnalyticsDto> ReviewsAsync(AnalyticsRangeQuery q,CancellationToken c=default); Task<AnalyticsDto> PostsAsync(AnalyticsRangeQuery q,CancellationToken c=default); Task<AnalyticsDto> WorkflowsAsync(AnalyticsRangeQuery q,CancellationToken c=default); Task<AnalyticsDto> AgentsAsync(AnalyticsRangeQuery q,CancellationToken c=default); Task<AnalyticsDto> AiUsageAsync(AnalyticsRangeQuery q,CancellationToken c=default); Task<AnalyticsDto> RevenueAsync(AnalyticsRangeQuery q,CancellationToken c=default); }

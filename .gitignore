@@ -17,6 +17,14 @@ obj/
 # Logs
 *.log
 
+# ASP.NET Core Data Protection key ring (contains cryptographic key material)
+backend/LocalMindAI.Api/App_Data/DataProtection-Keys/
+
+# Local SQLite runtime data
+*.db-wal
+*.db-shm
+backend/LocalMindAI.Api/LocalMindAI.db
+
 # Environment
 .env
 .env.*

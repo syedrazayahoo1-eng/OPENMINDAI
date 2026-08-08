@@ -23,7 +23,7 @@ public class AuthTokenService : IAuthTokenService
         _logger = logger;
     }
 
-    public async Task<AuthTokenResponse> IssueAsync(User user, bool rememberMe, string? ipAddress, CancellationToken cancellationToken = default)
+    public async Task<AuthTokenResponse> IssueAsync(User user, bool rememberMe, string? ipAddress, string? userAgent, CancellationToken cancellationToken = default)
     {
         var rawRefreshToken = Convert.ToBase64String(RandomNumberGenerator.GetBytes(64));
         var refreshToken = new RefreshToken
@@ -31,6 +31,7 @@ public class AuthTokenService : IAuthTokenService
             UserId = user.Id,
             TokenHash = Hash(rawRefreshToken),
             CreatedByIp = ipAddress,
+            UserAgent = userAgent,
             RememberMe = rememberMe,
             CreatedAt = DateTime.UtcNow,
             ExpiresAt = DateTime.UtcNow.AddDays(GetRefreshTokenLifetimeDays(rememberMe))
@@ -39,7 +40,7 @@ public class AuthTokenService : IAuthTokenService
         _context.RefreshTokens.Add(refreshToken);
         await _context.SaveChangesAsync(cancellationToken);
 
-        return CreateResponse(user, rawRefreshToken, refreshToken.ExpiresAt);
+        return await CreateResponseAsync(user, rawRefreshToken, refreshToken.ExpiresAt, cancellationToken);
     }
 
     public async Task<AuthTokenResponse?> RotateAsync(string rawRefreshToken, string? ipAddress, CancellationToken cancellationToken = default)
@@ -49,7 +50,7 @@ public class AuthTokenService : IAuthTokenService
             .Include(token => token.User)
             .SingleOrDefaultAsync(token => token.TokenHash == tokenHash, cancellationToken);
 
-        if (storedToken is null)
+        if (storedToken is null || !storedToken.User.IsActive)
             return null;
 
         if (!storedToken.IsActive)
@@ -82,7 +83,7 @@ public class AuthTokenService : IAuthTokenService
         _context.RefreshTokens.Add(nextToken);
         await _context.SaveChangesAsync(cancellationToken);
 
-        return CreateResponse(storedToken.User, nextRawRefreshToken, nextToken.ExpiresAt);
+        return await CreateResponseAsync(storedToken.User, nextRawRefreshToken, nextToken.ExpiresAt, cancellationToken);
     }
 
     public async Task RevokeAsync(string rawRefreshToken, string? ipAddress, CancellationToken cancellationToken = default)
@@ -117,17 +118,27 @@ public class AuthTokenService : IAuthTokenService
         return activeTokens.Count;
     }
 
-    private AuthTokenResponse CreateResponse(User user, string rawRefreshToken, DateTime refreshTokenExpiresAt)
+    private async Task<AuthTokenResponse> CreateResponseAsync(User user, string rawRefreshToken, DateTime refreshTokenExpiresAt, CancellationToken cancellationToken)
     {
         var now = DateTime.UtcNow;
         var accessTokenExpiresAt = now.AddMinutes(GetAccessTokenLifetimeMinutes());
-        var claims = new[]
+        var claims = new List<Claim>
         {
             new Claim(JwtRegisteredClaimNames.Sub, user.Id.ToString()),
             new Claim(JwtRegisteredClaimNames.Email, user.Email),
             new Claim(ClaimTypes.NameIdentifier, user.Id.ToString()),
             new Claim("FullName", user.FullName)
         };
+        var assignments = await _context.UserRoles.AsNoTracking()
+            .Where(assignment => assignment.UserId == user.Id)
+            .Include(assignment => assignment.Role)
+            .ThenInclude(role => role.RolePermissions)
+            .ThenInclude(assignment => assignment.Permission)
+            .ToListAsync(cancellationToken);
+        foreach (var roleName in assignments.Select(assignment => assignment.Role.Name).Distinct(StringComparer.OrdinalIgnoreCase))
+            claims.Add(new Claim(ClaimTypes.Role, roleName));
+        foreach (var permissionName in assignments.SelectMany(assignment => assignment.Role.RolePermissions).Select(assignment => assignment.Permission.Name).Distinct(StringComparer.OrdinalIgnoreCase))
+            claims.Add(new Claim("permission", permissionName));
         var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_configuration["Jwt:Key"]!));
         var credentials = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
         var token = new JwtSecurityToken(

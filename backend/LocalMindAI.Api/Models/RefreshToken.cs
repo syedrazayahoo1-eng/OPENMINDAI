@@ -8,6 +8,7 @@ public class RefreshToken
     public string? ReplacedByTokenHash { get; set; }
     public string? CreatedByIp { get; set; }
     public string? RevokedByIp { get; set; }
+    public string? UserAgent { get; set; }
     public bool RememberMe { get; set; }
     public DateTime ExpiresAt { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;

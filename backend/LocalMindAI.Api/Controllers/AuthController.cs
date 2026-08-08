@@ -16,13 +16,18 @@ public class AuthController : ControllerBase
 {
     private readonly ApplicationDbContext _context;
     private readonly IAuthTokenService _tokenService;
+    private readonly ISecurityService _securityService;
+    private readonly IWebHostEnvironment _environment;
 
-    public AuthController(ApplicationDbContext context, IAuthTokenService tokenService)
+    public AuthController(ApplicationDbContext context, IAuthTokenService tokenService, ISecurityService securityService, IWebHostEnvironment environment)
     {
         _context = context;
         _tokenService = tokenService;
+        _securityService = securityService;
+        _environment = environment;
     }
 
+    [AllowAnonymous]
     [HttpPost("register")]
     public async Task<IActionResult> Register(RegisterRequest request, CancellationToken cancellationToken)
     {
@@ -44,15 +49,20 @@ public class AuthController : ControllerBase
         return Ok(new { message = "User registered successfully!" });
     }
 
+    [AllowAnonymous]
     [HttpPost("login")]
     public async Task<IActionResult> Login(LoginRequest request, CancellationToken cancellationToken)
     {
         var email = request.Email.Trim().ToLowerInvariant();
         var user = await _context.Users.SingleOrDefaultAsync(item => item.Email == email, cancellationToken);
-        if (user is null || !BCrypt.Net.BCrypt.Verify(request.Password, user.PasswordHash))
+        if (user is null || !user.IsActive || !BCrypt.Net.BCrypt.Verify(request.Password, user.PasswordHash))
+        {
+            await _securityService.RecordLoginAsync(user?.Id, email, false, "Invalid email, password, or inactive account.", GetClientIpAddress(), Request.Headers.UserAgent.ToString(), cancellationToken);
             return Unauthorized(new { message = "Invalid email or password." });
+        }
 
-        var tokens = await _tokenService.IssueAsync(user, request.RememberMe, GetClientIpAddress(), cancellationToken);
+        await _securityService.RecordLoginAsync(user.Id, user.Email, true, null, GetClientIpAddress(), Request.Headers.UserAgent.ToString(), cancellationToken);
+        var tokens = await _tokenService.IssueAsync(user, request.RememberMe, GetClientIpAddress(), Request.Headers.UserAgent.ToString(), cancellationToken);
         SetRefreshCookie(tokens.RefreshToken, tokens.RefreshTokenExpiresAt);
         return Ok(new
         {
@@ -65,13 +75,15 @@ public class AuthController : ControllerBase
         });
     }
 
+    [AllowAnonymous]
     [HttpPost("refresh")]
-    public async Task<IActionResult> Refresh(RefreshTokenRequest request, CancellationToken cancellationToken)
+    public async Task<IActionResult> Refresh(CancellationToken cancellationToken)
     {
         var tokens = await _tokenService.RotateAsync(Request.Cookies["digitech_refresh" ] ?? string.Empty, GetClientIpAddress(), cancellationToken);
         if (tokens is null)
             return Unauthorized(new { message = "The refresh token is invalid, expired, or has been revoked." });
 
+        SetRefreshCookie(tokens.RefreshToken, tokens.RefreshTokenExpiresAt);
         return Ok(new
         {
             accessToken = tokens.AccessToken,
@@ -83,10 +95,10 @@ public class AuthController : ControllerBase
 
     [Authorize]
     [HttpPost("logout")]
-    public async Task<IActionResult> Logout(RefreshTokenRequest request, CancellationToken cancellationToken)
+    public async Task<IActionResult> Logout(CancellationToken cancellationToken)
     {
         await _tokenService.RevokeAsync(Request.Cookies["digitech_refresh"] ?? string.Empty, GetClientIpAddress(), cancellationToken);
-        Response.Cookies.Delete("digitech_refresh", new CookieOptions { Secure = true, HttpOnly = true, SameSite = SameSiteMode.Strict, Path = "/api/auth" });
+        DeleteRefreshCookies();
         return NoContent();
     }
 
@@ -115,5 +127,31 @@ public class AuthController : ControllerBase
     }
 
     private string? GetClientIpAddress() => HttpContext.Connection.RemoteIpAddress?.ToString();
-    private void SetRefreshCookie(string value, DateTime expiresAt) => Response.Cookies.Append("digitech_refresh", value, new CookieOptions { HttpOnly = true, Secure = true, SameSite = SameSiteMode.Strict, Expires = new DateTimeOffset(expiresAt), Path = "/api/auth" });
+    private void SetRefreshCookie(string value, DateTime expiresAt)
+    {
+        // Remove the previous auth-path cookie so migrations from older builds cannot shadow the API-wide cookie.
+        Response.Cookies.Delete("digitech_refresh", CookieOptionsFor("/api/auth"));
+        Response.Cookies.Append("digitech_refresh", value, new CookieOptions
+        {
+            HttpOnly = true,
+            Secure = !_environment.IsDevelopment(),
+            SameSite = SameSiteMode.Strict,
+            Expires = new DateTimeOffset(expiresAt),
+            Path = "/api"
+        });
+    }
+
+    private void DeleteRefreshCookies()
+    {
+        Response.Cookies.Delete("digitech_refresh", CookieOptionsFor("/api"));
+        Response.Cookies.Delete("digitech_refresh", CookieOptionsFor("/api/auth"));
+    }
+
+    private CookieOptions CookieOptionsFor(string path) => new()
+    {
+        Secure = !_environment.IsDevelopment(),
+        HttpOnly = true,
+        SameSite = SameSiteMode.Strict,
+        Path = path
+    };
 }

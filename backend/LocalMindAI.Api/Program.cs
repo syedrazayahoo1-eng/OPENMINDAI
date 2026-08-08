@@ -12,6 +12,8 @@ using System.Text.Json;
 using Azure.Identity;
 using LocalMindAI.Api.Services.Storage;
 using Microsoft.AspNetCore.Http.Features;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.DataProtection;
 
 var builder = WebApplication.CreateBuilder(args);
 builder.WebHost.ConfigureKestrel(options => options.Limits.MaxRequestBodySize = 10 * 1024 * 1024);
@@ -53,7 +55,13 @@ builder.Services.AddHealthChecks()
 builder.Services.AddRateLimiter(options =>
 {
     options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
-    options.AddFixedWindowLimiter("api", limiter => new FixedWindowRateLimiterOptions { PermitLimit = 120, Window = TimeSpan.FromMinutes(1), QueueLimit = 0, AutoReplenishment = true });
+    options.AddFixedWindowLimiter("api", limiter =>
+    {
+        limiter.PermitLimit = 120;
+        limiter.Window = TimeSpan.FromMinutes(1);
+        limiter.QueueLimit = 0;
+        limiter.AutoReplenishment = true;
+    });
     options.OnRejected = async (context, cancellationToken) =>
     {
         context.HttpContext.Response.ContentType = "application/json";
@@ -120,6 +128,17 @@ builder.Services.AddAuthentication(options =>
 
     options.Events = new JwtBearerEvents
     {
+        OnMessageReceived = context =>
+        {
+            // Browser SignalR transports cannot consistently send the bearer header after
+            // negotiation. SignalR sends its access token as a query value for this hub only.
+            var accessToken = context.Request.Query["access_token"];
+            var path = context.HttpContext.Request.Path;
+            if (!string.IsNullOrWhiteSpace(accessToken) && path.StartsWithSegments("/hubs/workflow-monitoring"))
+                context.Token = accessToken;
+
+            return Task.CompletedTask;
+        },
         OnAuthenticationFailed = context =>
         {
             context.HttpContext.RequestServices.GetRequiredService<ILoggerFactory>().CreateLogger("Authentication").LogWarning(context.Exception, "JWT authentication failed.");
@@ -134,8 +153,32 @@ builder.Services.AddAuthentication(options =>
     };
 });
 
-builder.Services.AddAuthorization();
+builder.Services.AddAuthorization(options =>
+{
+    options.FallbackPolicy = new AuthorizationPolicyBuilder()
+        .RequireAuthenticatedUser()
+        .Build();
+    foreach (var permission in new[]
+    {
+        "CRM.View", "CRM.Create", "CRM.Edit", "CRM.Delete",
+        "Reviews.View", "Reviews.Reply", "Reviews.Publish",
+        "Posts.View", "Posts.Create", "Posts.Publish", "Images.Generate",
+        "Workflow.Execute", "Agents.Run", "Monitoring.View", "Organization.Manage"
+        ,"Analytics.View"
+    })
+        options.AddPolicy($"Permission:{permission}", policy => policy.RequireClaim("permission", permission));
+});
 builder.Services.AddScoped<LocalMindAI.Api.Services.IAuthTokenService, LocalMindAI.Api.Services.AuthTokenService>();
+builder.Services.AddScoped<LocalMindAI.Api.Services.IOrganizationService, LocalMindAI.Api.Services.OrganizationService>();
+builder.Services.AddScoped<LocalMindAI.Api.Services.IRoleService, LocalMindAI.Api.Services.RoleService>();
+builder.Services.AddScoped<LocalMindAI.Api.Services.IUserService, LocalMindAI.Api.Services.UserService>();
+var dataProtectionKeyPath = builder.Configuration["DataProtection:KeyRingPath"]
+    ?? Path.Combine(builder.Environment.ContentRootPath, "App_Data", "DataProtection-Keys");
+Directory.CreateDirectory(dataProtectionKeyPath);
+builder.Services.AddDataProtection().PersistKeysToFileSystem(new DirectoryInfo(dataProtectionKeyPath));
+builder.Services.AddScoped<LocalMindAI.Api.Services.ISecurityService, LocalMindAI.Api.Services.SecurityService>();
+builder.Services.AddScoped<LocalMindAI.Api.Services.IIntegrationService, LocalMindAI.Api.Services.IntegrationService>();
+builder.Services.AddScoped<LocalMindAI.Api.Services.IAnalyticsService, LocalMindAI.Api.Services.AnalyticsService>();
 builder.Services.AddSingleton<LocalMindAI.Api.Services.IExternalServicesDiagnostics, LocalMindAI.Api.Services.ExternalServicesDiagnostics>();
 builder.Services.AddSingleton<LocalMindAI.Api.Services.ExternalHttpRetry>();
 builder.Services.AddSingleton<LocalMindAI.Api.Services.GoogleOAuthStateStore>();
@@ -252,6 +295,6 @@ app.MapHealthChecks("/healthz", new HealthCheckOptions
         context.Response.ContentType = "application/json";
         await context.Response.WriteAsync(JsonSerializer.Serialize(new { status = report.Status.ToString(), checks = report.Entries.ToDictionary(entry => entry.Key, entry => new { status = entry.Value.Status.ToString(), description = entry.Value.Description, data = entry.Value.Data }) }));
     }
-});
+}).AllowAnonymous();
 
 app.Run();

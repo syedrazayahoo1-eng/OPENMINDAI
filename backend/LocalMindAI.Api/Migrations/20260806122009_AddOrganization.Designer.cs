@@ -3,6 +3,7 @@ using System;
 using LocalMindAI.Api.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -10,9 +11,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace LocalMindAI.Api.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    partial class ApplicationDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260806122009_AddOrganization")]
+    partial class AddOrganization
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder.HasAnnotation("ProductVersion", "10.0.10");
@@ -78,89 +81,6 @@ namespace LocalMindAI.Api.Migrations
                     b.HasIndex("Status", "UpdatedAt");
 
                     b.ToTable("Agents");
-                });
-
-            modelBuilder.Entity("LocalMindAI.Api.Models.ApiKey", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("INTEGER");
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("TEXT");
-
-                    b.Property<DateTime?>("ExpiresAt")
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("KeyHash")
-                        .IsRequired()
-                        .HasMaxLength(128)
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("KeyPrefix")
-                        .IsRequired()
-                        .HasMaxLength(24)
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("Name")
-                        .IsRequired()
-                        .HasMaxLength(100)
-                        .HasColumnType("TEXT");
-
-                    b.Property<DateTime?>("RevokedAt")
-                        .HasColumnType("TEXT");
-
-                    b.Property<int>("UserId")
-                        .HasColumnType("INTEGER");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("KeyHash")
-                        .IsUnique();
-
-                    b.HasIndex("UserId", "RevokedAt");
-
-                    b.ToTable("ApiKeys");
-                });
-
-            modelBuilder.Entity("LocalMindAI.Api.Models.AuditLog", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("INTEGER");
-
-                    b.Property<string>("Action")
-                        .IsRequired()
-                        .HasMaxLength(160)
-                        .HasColumnType("TEXT");
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("EntityId")
-                        .HasMaxLength(100)
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("EntityType")
-                        .HasMaxLength(100)
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("IpAddress")
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("Metadata")
-                        .HasColumnType("TEXT");
-
-                    b.Property<int?>("UserId")
-                        .HasColumnType("INTEGER");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("Action");
-
-                    b.HasIndex("UserId", "CreatedAt");
-
-                    b.ToTable("AuditLogs");
                 });
 
             modelBuilder.Entity("LocalMindAI.Api.Models.BrandVoice", b =>
@@ -618,117 +538,6 @@ namespace LocalMindAI.Api.Migrations
                     b.ToTable("GoogleBusinessPosts");
                 });
 
-            modelBuilder.Entity("LocalMindAI.Api.Models.IntegrationConfiguration", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("INTEGER");
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("EncryptedConfiguration")
-                        .IsRequired()
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("LastTestMessage")
-                        .HasColumnType("TEXT");
-
-                    b.Property<DateTime?>("LastTestedAt")
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("Provider")
-                        .IsRequired()
-                        .HasMaxLength(64)
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("PublicConfiguration")
-                        .IsRequired()
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("Status")
-                        .IsRequired()
-                        .HasMaxLength(32)
-                        .HasColumnType("TEXT");
-
-                    b.Property<DateTime>("UpdatedAt")
-                        .HasColumnType("TEXT");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("Provider")
-                        .IsUnique();
-
-                    b.ToTable("IntegrationConfigurations");
-                });
-
-            modelBuilder.Entity("LocalMindAI.Api.Models.LoginHistory", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("INTEGER");
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("Email")
-                        .IsRequired()
-                        .HasMaxLength(254)
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("FailureReason")
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("IpAddress")
-                        .HasColumnType("TEXT");
-
-                    b.Property<bool>("Succeeded")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<string>("UserAgent")
-                        .HasMaxLength(512)
-                        .HasColumnType("TEXT");
-
-                    b.Property<int?>("UserId")
-                        .HasColumnType("INTEGER");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("UserId", "CreatedAt");
-
-                    b.ToTable("LoginHistories");
-                });
-
-            modelBuilder.Entity("LocalMindAI.Api.Models.MfaCredential", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("INTEGER");
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("TEXT");
-
-                    b.Property<DateTime?>("DisabledAt")
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("EncryptedSecret")
-                        .IsRequired()
-                        .HasColumnType("TEXT");
-
-                    b.Property<bool>("IsEnabled")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<int>("UserId")
-                        .HasColumnType("INTEGER");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("UserId")
-                        .IsUnique();
-
-                    b.ToTable("MfaCredentials");
-                });
-
             modelBuilder.Entity("LocalMindAI.Api.Models.Organization", b =>
                 {
                     b.Property<int>("Id")
@@ -804,206 +613,6 @@ namespace LocalMindAI.Api.Migrations
                     b.ToTable("Organizations");
                 });
 
-            modelBuilder.Entity("LocalMindAI.Api.Models.Permission", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("INTEGER");
-
-                    b.Property<string>("Description")
-                        .HasMaxLength(500)
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("Name")
-                        .IsRequired()
-                        .HasMaxLength(100)
-                        .HasColumnType("TEXT");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("Name")
-                        .IsUnique();
-
-                    b.ToTable("Permissions");
-
-                    b.HasData(
-                        new
-                        {
-                            Id = 1,
-                            Name = "CRM.View"
-                        },
-                        new
-                        {
-                            Id = 2,
-                            Name = "CRM.Create"
-                        },
-                        new
-                        {
-                            Id = 3,
-                            Name = "CRM.Edit"
-                        },
-                        new
-                        {
-                            Id = 4,
-                            Name = "CRM.Delete"
-                        },
-                        new
-                        {
-                            Id = 5,
-                            Name = "Reviews.View"
-                        },
-                        new
-                        {
-                            Id = 6,
-                            Name = "Reviews.Reply"
-                        },
-                        new
-                        {
-                            Id = 7,
-                            Name = "Reviews.Publish"
-                        },
-                        new
-                        {
-                            Id = 8,
-                            Name = "Posts.View"
-                        },
-                        new
-                        {
-                            Id = 9,
-                            Name = "Posts.Create"
-                        },
-                        new
-                        {
-                            Id = 10,
-                            Name = "Posts.Publish"
-                        },
-                        new
-                        {
-                            Id = 11,
-                            Name = "Images.Generate"
-                        },
-                        new
-                        {
-                            Id = 12,
-                            Name = "Workflow.Execute"
-                        },
-                        new
-                        {
-                            Id = 13,
-                            Name = "Agents.Run"
-                        },
-                        new
-                        {
-                            Id = 14,
-                            Name = "Monitoring.View"
-                        },
-                        new
-                        {
-                            Id = 15,
-                            Name = "Organization.Manage"
-                        },
-                        new
-                        {
-                            Id = 16,
-                            Name = "Reviews.Delete"
-                        },
-                        new
-                        {
-                            Id = 17,
-                            Name = "Posts.Edit"
-                        },
-                        new
-                        {
-                            Id = 18,
-                            Name = "Posts.Delete"
-                        },
-                        new
-                        {
-                            Id = 19,
-                            Name = "Images.View"
-                        },
-                        new
-                        {
-                            Id = 20,
-                            Name = "Images.Delete"
-                        },
-                        new
-                        {
-                            Id = 21,
-                            Name = "Workflows.View"
-                        },
-                        new
-                        {
-                            Id = 22,
-                            Name = "Workflows.Create"
-                        },
-                        new
-                        {
-                            Id = 23,
-                            Name = "Workflows.Edit"
-                        },
-                        new
-                        {
-                            Id = 24,
-                            Name = "Workflows.Delete"
-                        },
-                        new
-                        {
-                            Id = 25,
-                            Name = "Workflows.Execute"
-                        },
-                        new
-                        {
-                            Id = 26,
-                            Name = "Agents.View"
-                        },
-                        new
-                        {
-                            Id = 27,
-                            Name = "Agents.Create"
-                        },
-                        new
-                        {
-                            Id = 28,
-                            Name = "Agents.Edit"
-                        },
-                        new
-                        {
-                            Id = 29,
-                            Name = "Agents.Delete"
-                        },
-                        new
-                        {
-                            Id = 30,
-                            Name = "Users.Invite"
-                        },
-                        new
-                        {
-                            Id = 31,
-                            Name = "Users.Edit"
-                        },
-                        new
-                        {
-                            Id = 32,
-                            Name = "Users.Delete"
-                        },
-                        new
-                        {
-                            Id = 33,
-                            Name = "Users.AssignRoles"
-                        },
-                        new
-                        {
-                            Id = 34,
-                            Name = "Settings.Manage"
-                        },
-                        new
-                        {
-                            Id = 35,
-                            Name = "Analytics.View"
-                        });
-                });
-
             modelBuilder.Entity("LocalMindAI.Api.Models.RefreshToken", b =>
                 {
                     b.Property<int>("Id")
@@ -1033,9 +642,6 @@ namespace LocalMindAI.Api.Migrations
 
                     b.Property<string>("TokenHash")
                         .IsRequired()
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("UserAgent")
                         .HasColumnType("TEXT");
 
                     b.Property<int>("UserId")
@@ -1126,50 +732,6 @@ namespace LocalMindAI.Api.Migrations
                     b.ToTable("ReviewReplies");
                 });
 
-            modelBuilder.Entity("LocalMindAI.Api.Models.Role", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("INTEGER");
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("Description")
-                        .HasMaxLength(500)
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("Name")
-                        .IsRequired()
-                        .HasMaxLength(100)
-                        .HasColumnType("TEXT");
-
-                    b.Property<DateTime>("UpdatedAt")
-                        .HasColumnType("TEXT");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("Name")
-                        .IsUnique();
-
-                    b.ToTable("Roles");
-                });
-
-            modelBuilder.Entity("LocalMindAI.Api.Models.RolePermission", b =>
-                {
-                    b.Property<int>("RoleId")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<int>("PermissionId")
-                        .HasColumnType("INTEGER");
-
-                    b.HasKey("RoleId", "PermissionId");
-
-                    b.HasIndex("PermissionId");
-
-                    b.ToTable("RolePermissions");
-                });
-
             modelBuilder.Entity("LocalMindAI.Api.Models.ScheduledPost", b =>
                 {
                     b.Property<int>("Id")
@@ -1238,9 +800,6 @@ namespace LocalMindAI.Api.Migrations
                         .IsRequired()
                         .HasColumnType("TEXT");
 
-                    b.Property<bool>("IsActive")
-                        .HasColumnType("INTEGER");
-
                     b.Property<string>("PasswordHash")
                         .IsRequired()
                         .HasColumnType("TEXT");
@@ -1250,27 +809,7 @@ namespace LocalMindAI.Api.Migrations
                     b.HasIndex("Email")
                         .IsUnique();
 
-                    b.HasIndex("IsActive", "FullName");
-
                     b.ToTable("Users");
-                });
-
-            modelBuilder.Entity("LocalMindAI.Api.Models.UserRole", b =>
-                {
-                    b.Property<int>("UserId")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<int>("RoleId")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<DateTime>("AssignedAt")
-                        .HasColumnType("TEXT");
-
-                    b.HasKey("UserId", "RoleId");
-
-                    b.HasIndex("RoleId");
-
-                    b.ToTable("UserRoles");
                 });
 
             modelBuilder.Entity("LocalMindAI.Api.Models.Workflow", b =>
@@ -1412,27 +951,6 @@ namespace LocalMindAI.Api.Migrations
                     b.ToTable("WorkflowSteps");
                 });
 
-            modelBuilder.Entity("LocalMindAI.Api.Models.ApiKey", b =>
-                {
-                    b.HasOne("LocalMindAI.Api.Models.User", "User")
-                        .WithMany()
-                        .HasForeignKey("UserId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("User");
-                });
-
-            modelBuilder.Entity("LocalMindAI.Api.Models.AuditLog", b =>
-                {
-                    b.HasOne("LocalMindAI.Api.Models.User", "User")
-                        .WithMany()
-                        .HasForeignKey("UserId")
-                        .OnDelete(DeleteBehavior.SetNull);
-
-                    b.Navigation("User");
-                });
-
             modelBuilder.Entity("LocalMindAI.Api.Models.CustomerActivity", b =>
                 {
                     b.HasOne("LocalMindAI.Api.Models.Customer", "Customer")
@@ -1453,27 +971,6 @@ namespace LocalMindAI.Api.Migrations
                         .IsRequired();
 
                     b.Navigation("Customer");
-                });
-
-            modelBuilder.Entity("LocalMindAI.Api.Models.LoginHistory", b =>
-                {
-                    b.HasOne("LocalMindAI.Api.Models.User", "User")
-                        .WithMany()
-                        .HasForeignKey("UserId")
-                        .OnDelete(DeleteBehavior.SetNull);
-
-                    b.Navigation("User");
-                });
-
-            modelBuilder.Entity("LocalMindAI.Api.Models.MfaCredential", b =>
-                {
-                    b.HasOne("LocalMindAI.Api.Models.User", "User")
-                        .WithMany()
-                        .HasForeignKey("UserId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("User");
                 });
 
             modelBuilder.Entity("LocalMindAI.Api.Models.RefreshToken", b =>
@@ -1498,25 +995,6 @@ namespace LocalMindAI.Api.Migrations
                     b.Navigation("Review");
                 });
 
-            modelBuilder.Entity("LocalMindAI.Api.Models.RolePermission", b =>
-                {
-                    b.HasOne("LocalMindAI.Api.Models.Permission", "Permission")
-                        .WithMany("RolePermissions")
-                        .HasForeignKey("PermissionId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.HasOne("LocalMindAI.Api.Models.Role", "Role")
-                        .WithMany("RolePermissions")
-                        .HasForeignKey("RoleId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("Permission");
-
-                    b.Navigation("Role");
-                });
-
             modelBuilder.Entity("LocalMindAI.Api.Models.ScheduledPost", b =>
                 {
                     b.HasOne("LocalMindAI.Api.Models.GoogleBusinessPost", "GoogleBusinessPost")
@@ -1526,25 +1004,6 @@ namespace LocalMindAI.Api.Migrations
                         .IsRequired();
 
                     b.Navigation("GoogleBusinessPost");
-                });
-
-            modelBuilder.Entity("LocalMindAI.Api.Models.UserRole", b =>
-                {
-                    b.HasOne("LocalMindAI.Api.Models.Role", "Role")
-                        .WithMany("UserRoles")
-                        .HasForeignKey("RoleId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.HasOne("LocalMindAI.Api.Models.User", "User")
-                        .WithMany("UserRoles")
-                        .HasForeignKey("UserId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("Role");
-
-                    b.Navigation("User");
                 });
 
             modelBuilder.Entity("LocalMindAI.Api.Models.WorkflowExecution", b =>
@@ -1572,23 +1031,9 @@ namespace LocalMindAI.Api.Migrations
                     b.Navigation("Notes");
                 });
 
-            modelBuilder.Entity("LocalMindAI.Api.Models.Permission", b =>
-                {
-                    b.Navigation("RolePermissions");
-                });
-
-            modelBuilder.Entity("LocalMindAI.Api.Models.Role", b =>
-                {
-                    b.Navigation("RolePermissions");
-
-                    b.Navigation("UserRoles");
-                });
-
             modelBuilder.Entity("LocalMindAI.Api.Models.User", b =>
                 {
                     b.Navigation("RefreshTokens");
-
-                    b.Navigation("UserRoles");
                 });
 
             modelBuilder.Entity("LocalMindAI.Api.Models.Workflow", b =>
