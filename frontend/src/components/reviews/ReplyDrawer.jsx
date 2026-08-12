@@ -1,7 +1,7 @@
 import { AnimatePresence, motion } from 'framer-motion'
 import { Check, Copy, Loader2, Send, Sparkles, X } from 'lucide-react'
 import { useEffect, useState } from 'react'
-import { generateReviewReply, getReviewReply, publishReviewReply, saveReviewReplyDraft } from '../../services/reviewservice'
+import { generateReviewReply, getReviewReply, publishReviewReply, saveReviewReplyDraft } from '../../services/reviewService'
 import RatingBadge from './RatingBadge'
 
 const modes = ['Professional', 'Friendly', 'Premium', 'Custom Prompt']
