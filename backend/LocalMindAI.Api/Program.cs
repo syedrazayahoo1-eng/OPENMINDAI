@@ -163,8 +163,8 @@ builder.Services.AddAuthorization(options =>
         "CRM.View", "CRM.Create", "CRM.Edit", "CRM.Delete",
         "Reviews.View", "Reviews.Reply", "Reviews.Publish",
         "Posts.View", "Posts.Create", "Posts.Publish", "Images.Generate",
-        "Workflow.Execute", "Agents.Run", "Monitoring.View", "Organization.Manage"
-        ,"Analytics.View"
+        "Workflow.Execute", "Agents.Run", "Monitoring.View", "Organization.Manage",
+        "Analytics.View", "Users.Invite", "Users.Edit", "Users.Delete", "Users.AssignRoles", "Settings.Manage"
     })
         options.AddPolicy($"Permission:{permission}", policy => policy.RequireClaim("permission", permission));
 });
@@ -298,3 +298,5 @@ app.MapHealthChecks("/healthz", new HealthCheckOptions
 }).AllowAnonymous();
 
 app.Run();
+
+public partial class Program;

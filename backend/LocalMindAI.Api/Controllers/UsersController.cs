@@ -11,9 +11,11 @@ namespace LocalMindAI.Api.Controllers;
 [Route("api/users")]
 public sealed class UsersController(IUserService service) : ControllerBase
 {
+    [Authorize(Policy = "Permission:Settings.Manage")]
     [HttpGet]
     public async Task<ActionResult<PagedResultDto<UserDto>>> Get([FromQuery] UserQueryDto query, CancellationToken cancellationToken) => Ok(await service.GetUsersAsync(query, cancellationToken));
 
+    [Authorize(Policy = "Permission:Settings.Manage")]
     [HttpGet("{id:int}")]
     public async Task<ActionResult<UserDto>> GetById(int id, CancellationToken cancellationToken)
     {
@@ -21,6 +23,7 @@ public sealed class UsersController(IUserService service) : ControllerBase
         return user is null ? NotFound() : Ok(user);
     }
 
+    [Authorize(Policy = "Permission:Users.Invite")]
     [HttpPost("invite")]
     public async Task<ActionResult<UserDto>> Invite([FromBody] InviteUserDto input, CancellationToken cancellationToken)
     {
@@ -35,6 +38,7 @@ public sealed class UsersController(IUserService service) : ControllerBase
         }
     }
 
+    [Authorize(Policy = "Permission:Users.Edit")]
     [HttpPut("{id:int}")]
     public async Task<ActionResult<UserDto>> Update(int id, [FromBody] UpdateUserDto input, CancellationToken cancellationToken)
     {
@@ -49,6 +53,7 @@ public sealed class UsersController(IUserService service) : ControllerBase
         }
     }
 
+    [Authorize(Policy = "Permission:Users.Delete")]
     [HttpDelete("{id:int}")]
     public async Task<IActionResult> Delete(int id, CancellationToken cancellationToken)
     {
@@ -56,9 +61,11 @@ public sealed class UsersController(IUserService service) : ControllerBase
         return await service.DeleteAsync(id, cancellationToken) ? NoContent() : NotFound();
     }
 
+    [Authorize(Policy = "Permission:Users.Edit")]
     [HttpPatch("{id:int}/activate")]
     public async Task<ActionResult<UserDto>> Activate(int id, CancellationToken cancellationToken) => await SetActive(id, true, cancellationToken);
 
+    [Authorize(Policy = "Permission:Users.Edit")]
     [HttpPatch("{id:int}/deactivate")]
     public async Task<ActionResult<UserDto>> Deactivate(int id, CancellationToken cancellationToken)
     {
@@ -66,6 +73,7 @@ public sealed class UsersController(IUserService service) : ControllerBase
         return await SetActive(id, false, cancellationToken);
     }
 
+    [Authorize(Policy = "Permission:Users.AssignRoles")]
     [HttpPatch("{id:int}/roles")]
     public async Task<ActionResult<UserDto>> AssignRoles(int id, [FromBody] AssignUserRolesDto input, CancellationToken cancellationToken)
     {

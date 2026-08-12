@@ -33,6 +33,12 @@ Do not place these values in App Service files, GitHub variables, images, or dep
 - Redis: Standard C1 minimum; Premium/Enterprise for zone redundancy, persistence, private networking and production SignalR scale. Use TLS only and retain the existing singleton connection/backplane configuration.
 - Blob: private `uploads` container; deny public access, use managed identity, enable soft delete/versioning and lifecycle Hot-to-Cool after 30–90 days.
 
+## Data Protection key persistence
+
+The API encrypts MFA secrets and encrypted integration configuration with ASP.NET Core Data Protection. The Docker Compose deployment persists the key ring at `/app/App_Data/DataProtection-Keys` through the durable `backend_data_protection_keys` volume. Do not store generated key-ring XML in source control, container images, or application uploads.
+
+For Azure App Service, configure an equivalently durable, access-controlled key-ring provider before enabling MFA or storing encrypted integration configuration. Azure Blob Storage protected with Key Vault is the recommended production option; the existing Azure infrastructure must grant the API managed identity only the required storage and key-access permissions.
+
 ## Observability and AI
 
 Set `ApplicationInsights__ConnectionString`; request/dependency/exception telemetry, workflow metrics, AI timing, Google timing, correlation IDs and monitoring SignalR events are emitted by the existing platform. Enable adaptive sampling, availability tests for `/healthz`, and alerts for failed workflows, dependency failures, high latency, memory and CPU.

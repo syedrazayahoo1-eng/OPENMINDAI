@@ -6,7 +6,7 @@ using Microsoft.AspNetCore.Mvc;
 namespace LocalMindAI.Api.Controllers;
 
 [ApiController]
-[Authorize]
+[Authorize(Policy = "Permission:Settings.Manage")]
 [Route("api/integrations")]
 public sealed class IntegrationsController(IIntegrationService service) : ControllerBase
 {

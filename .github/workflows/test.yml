@@ -11,6 +11,7 @@ env:
   DOTNET_VERSION: 10.0.x
   NODE_VERSION: 22.x
   BACKEND_PATH: backend/LocalMindAI.Api
+  BACKEND_TEST_PATH: backend/LocalMindAI.Api.Tests/LocalMindAI.Api.Tests.csproj
   FRONTEND_PATH: frontend
 
 jobs:
@@ -22,21 +23,12 @@ jobs:
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: ${{ env.DOTNET_VERSION }}
-      - name: Restore
-        run: dotnet restore
-        working-directory: ${{ env.BACKEND_PATH }}
-      - name: Run backend tests when present
-        shell: bash
+      - name: Restore backend and test projects
         run: |
-          mapfile -t projects < <(find ../../ -type f -name '*Tests.csproj' -not -path '*/bin/*' -not -path '*/obj/*')
-          if [ "${#projects[@]}" -eq 0 ]; then
-            echo 'No backend test projects found; skipping.'
-            exit 0
-          fi
-          for project in "${projects[@]}"; do
-            dotnet test "$project" -c Release --no-restore
-          done
-        working-directory: ${{ env.BACKEND_PATH }}
+          dotnet restore ${{ env.BACKEND_PATH }}/LocalMindAI.Api.csproj
+          dotnet restore ${{ env.BACKEND_TEST_PATH }}
+      - name: Run backend integration tests
+        run: dotnet test ${{ env.BACKEND_TEST_PATH }} -c Release --no-restore
       - name: Scan NuGet dependencies for known vulnerabilities
         run: dotnet list package --vulnerable --include-transitive
         working-directory: ${{ env.BACKEND_PATH }}

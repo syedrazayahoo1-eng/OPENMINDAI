@@ -82,10 +82,10 @@ jobs:
       JWT_KEY: ci-verification-key-that-is-longer-than-thirty-two-characters
     steps:
       - uses: actions/checkout@v4
-      - name: Build all container images
-        run: docker compose build
+      - name: Build production container images
+        run: docker compose -f docker-compose.yml build
       - name: Publish image metadata
-        run: docker compose images --format json > "$RUNNER_TEMP/docker-images.json"
+        run: docker compose -f docker-compose.yml images --format json > "$RUNNER_TEMP/docker-images.json"
       - uses: actions/upload-artifact@v4
         with:
           name: docker-image-metadata

@@ -49,11 +49,13 @@ services:
       Cors__AllowedOrigins__0: ${PUBLIC_ORIGIN:-http://localhost:8080}
       AllowedHosts: ${ALLOWED_HOSTS:-localhost;backend}
       ApplicationInsights__ConnectionString: ${APPLICATIONINSIGHTS_CONNECTION_STRING:-}
+      DataProtection__KeyRingPath: /app/App_Data/DataProtection-Keys
     ports:
       - "5016:8080"
     volumes:
       - backend_uploads:/app/uploads
       - backend_logs:/app/logs
+      - backend_data_protection_keys:/app/App_Data/DataProtection-Keys
     depends_on:
       sqlserver:
         condition: service_healthy
@@ -103,6 +105,7 @@ services:
 volumes:
   backend_uploads:
   backend_logs:
+  backend_data_protection_keys:
   redis_data:
   sqlserver_data:
 
