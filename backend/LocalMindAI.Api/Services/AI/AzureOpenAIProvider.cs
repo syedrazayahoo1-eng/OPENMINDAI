@@ -73,12 +73,23 @@ public sealed class AzureOpenAIProvider : IAIProvider
 
         try
         {
-            ClientResult<ChatCompletion> completion = await _chatClient
-                .CompleteChatAsync(
-                    BuildMessages(request),
-                    BuildOptions(request),
-                    cancellationToken)
-                .ConfigureAwait(false);
+            ClientResult<ChatCompletion>? completion = null;
+            for (var attempt = 1; attempt <= 3; attempt++)
+            {
+                try
+                {
+                    completion = await _chatClient.CompleteChatAsync(BuildMessages(request), BuildOptions(request), cancellationToken).ConfigureAwait(false);
+                    break;
+                }
+                catch (ClientResultException exception) when (attempt < 3 && (exception.Status == 429 || exception.Status >= 500))
+                {
+                    var delay = TimeSpan.FromMilliseconds(250 * Math.Pow(2, attempt - 1));
+                    _logger.LogWarning(exception, "Azure OpenAI request for deployment {DeploymentName} failed on attempt {Attempt}; retrying in {DelayMs} ms.", _options.DeploymentName, attempt, delay.TotalMilliseconds);
+                    await Task.Delay(delay, cancellationToken);
+                }
+            }
+
+            if (completion is null) throw new InvalidOperationException("Azure OpenAI retry attempts completed without a response.");
 
             var content = new StringBuilder();
 

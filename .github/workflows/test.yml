@@ -1,0 +1,71 @@
+name: Test and Security
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+env:
+  DOTNET_VERSION: 10.0.x
+  NODE_VERSION: 22.x
+  BACKEND_PATH: backend/LocalMindAI.Api
+  BACKEND_TEST_PATH: backend/LocalMindAI.Api.Tests/LocalMindAI.Api.Tests.csproj
+  FRONTEND_PATH: frontend
+
+jobs:
+  backend-tests:
+    name: Backend tests and dependency scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+      - name: Restore backend and test projects
+        run: |
+          dotnet restore ${{ env.BACKEND_PATH }}/LocalMindAI.Api.csproj
+          dotnet restore ${{ env.BACKEND_TEST_PATH }}
+      - name: Run backend integration tests
+        run: dotnet test ${{ env.BACKEND_TEST_PATH }} -c Release --no-restore
+      - name: Scan NuGet dependencies for known vulnerabilities
+        run: dotnet list package --vulnerable --include-transitive
+        working-directory: ${{ env.BACKEND_PATH }}
+
+  frontend-tests:
+    name: Frontend tests and dependency scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install locked dependencies
+        run: npm ci
+        working-directory: ${{ env.FRONTEND_PATH }}
+      - name: Run frontend tests when a test script is defined
+        shell: bash
+        run: |
+          if node -e "const scripts=require('./package.json').scripts || {}; process.exit(scripts.test ? 0 : 1)"; then
+            npm run test -- --run
+          else
+            echo 'No frontend test script found; skipping.'
+          fi
+        working-directory: ${{ env.FRONTEND_PATH }}
+      - name: Audit production dependencies
+        run: npm audit --omit=dev --audit-level=high
+        working-directory: ${{ env.FRONTEND_PATH }}
+
+  secrets:
+    name: Secret scanning readiness
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

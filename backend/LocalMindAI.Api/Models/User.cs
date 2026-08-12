@@ -12,5 +12,11 @@ public class User
 
     public string CompanyName { get; set; } = string.Empty;
 
+    public bool IsActive { get; set; } = true;
+
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+
+    public ICollection<RefreshToken> RefreshTokens { get; set; } = new List<RefreshToken>();
+
+    public ICollection<UserRole> UserRoles { get; set; } = new List<UserRole>();
 }

@@ -17,12 +17,12 @@ namespace LocalMindAI.Api.Migrations
                 {
                     Id = table.Column<int>(type: "int", nullable: false)
                         .Annotation("SqlServer:Identity", "1, 1"),
-                    ReviewerName = table.Column<string>(type: "nvarchar(max)", nullable: false),
+                    ReviewerName = table.Column<string>(type: "TEXT", nullable: false),
                     Rating = table.Column<int>(type: "int", nullable: false),
-                    ReviewText = table.Column<string>(type: "nvarchar(max)", nullable: false),
-                    AIReply = table.Column<string>(type: "nvarchar(max)", nullable: true),
+                    ReviewText = table.Column<string>(type: "TEXT", nullable: false),
+                    AIReply = table.Column<string>(type: "TEXT", nullable: true),
                     IsReplied = table.Column<bool>(type: "bit", nullable: false),
-                    CreatedAt = table.Column<DateTime>(type: "datetime2", nullable: false)
+                    CreatedAt = table.Column<DateTime>(type: "TEXT", nullable: false)
                 },
                 constraints: table =>
                 {

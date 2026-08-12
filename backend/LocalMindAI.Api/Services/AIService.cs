@@ -1,6 +1,8 @@
 using System.Runtime.CompilerServices;
 using LocalMindAI.Api.Services.AI;
 using Microsoft.Extensions.Logging;
+using LocalMindAI.Api.Data;
+using Microsoft.EntityFrameworkCore;
 
 namespace LocalMindAI.Api.Services;
 
@@ -15,11 +17,13 @@ public class AIService
 {
     private readonly IAIProviderFactory _providerFactory;
     private readonly ILogger<AIService> _logger;
+    private readonly ApplicationDbContext _context;
 
-    public AIService(IAIProviderFactory providerFactory, ILogger<AIService> logger)
+    public AIService(IAIProviderFactory providerFactory, ILogger<AIService> logger, ApplicationDbContext context)
     {
         _providerFactory = providerFactory;
         _logger = logger;
+        _context = context;
     }
 
     /// <summary>
@@ -38,7 +42,8 @@ public class AIService
 
         var request = new AIRequest
         {
-            Prompt = prompt ?? string.Empty
+            Prompt = prompt ?? string.Empty,
+            SystemPrompt = await BrandVoicePromptAsync()
         };
 
         var provider = _providerFactory.GetDefaultProvider();
@@ -84,7 +89,8 @@ public class AIService
 
         var request = new AIRequest
         {
-            Prompt = prompt ?? string.Empty
+            Prompt = prompt ?? string.Empty,
+            SystemPrompt = await BrandVoicePromptAsync()
         };
 
         var provider = _providerFactory.GetDefaultProvider();
@@ -96,4 +102,5 @@ public class AIService
             yield return chunk;
         }
     }
+    private async Task<string> BrandVoicePromptAsync() { var voice = await _context.BrandVoices.AsNoTracking().OrderBy(item => item.Id).FirstOrDefaultAsync(); return voice is null ? "" : $"Apply this Brand Voice to every response: Business={voice.BusinessName}; Industry={voice.Industry}; Writing style={voice.WritingStyle}; Tone={voice.Tone}; Audience={voice.Audience}; Language={voice.Language}; Keywords={voice.Keywords}; Emoji enabled={voice.EmojiEnabled}; CTA enabled={voice.CallToActionEnabled}; Reply length={voice.ReplyLength}."; }
 }

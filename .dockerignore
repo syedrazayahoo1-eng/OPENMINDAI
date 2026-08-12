@@ -1,0 +1,14 @@
+.git
+.github
+.vscode
+node_modules
+**/node_modules
+**/bin
+**/obj
+**/dist
+logs
+artifacts
+*.log
+*.zip
+.env
+.env.*

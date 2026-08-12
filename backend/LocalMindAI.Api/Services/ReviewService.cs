@@ -6,6 +6,8 @@ using LocalMindAI.Api.Data;
 using LocalMindAI.Api.Models;
 using LocalMindAI.Api.DTOs.Reviews;
 using LocalMindAI.Api.Services.AI;
+using LocalMindAI.Api.Hubs;
+using Microsoft.AspNetCore.SignalR;
 
 namespace LocalMindAI.Api.Services;
 
@@ -28,12 +30,16 @@ public class ReviewService : IReviewService
     private readonly ApplicationDbContext _context;
     private readonly IAIProviderFactory _providerFactory;
     private readonly ILogger<ReviewService> _logger;
+    private readonly IHubContext<WorkflowMonitoringHub> _hub;
+    private readonly IGoogleBusinessProfileService _googleBusiness;
 
-    public ReviewService(ApplicationDbContext context, IAIProviderFactory providerFactory, ILogger<ReviewService> logger)
+    public ReviewService(ApplicationDbContext context, IAIProviderFactory providerFactory, ILogger<ReviewService> logger, IHubContext<WorkflowMonitoringHub> hub, IGoogleBusinessProfileService googleBusiness)
     {
         _context = context;
         _providerFactory = providerFactory;
         _logger = logger;
+        _hub = hub;
+        _googleBusiness = googleBusiness;
     }
 
     public async Task<IEnumerable<ReviewDto>> GetAllAsync()
@@ -65,7 +71,9 @@ public class ReviewService : IReviewService
         _context.Reviews.Add(review);
         await _context.SaveChangesAsync();
 
-        return MapToDto(review);
+        var created = MapToDto(review);
+        await PublishReviewUpdatedAsync(created);
+        return created;
     }
 
     public async Task<ReviewDto?> UpdateAsync(int id, ReviewDto reviewDto)
@@ -81,7 +89,9 @@ public class ReviewService : IReviewService
 
         await _context.SaveChangesAsync();
 
-        return MapToDto(review);
+        var updated = MapToDto(review);
+        await PublishReviewUpdatedAsync(updated);
+        return updated;
     }
 
     public async Task<bool> DeleteAsync(int id)
@@ -91,27 +101,44 @@ public class ReviewService : IReviewService
 
         _context.Reviews.Remove(review);
         await _context.SaveChangesAsync();
+        await _hub.Clients.All.SendAsync("ReviewUpdated", new { id, deleted = true });
         return true;
     }
 
-    public async Task<GenerateReplyResponse> GenerateReplyAsync(GenerateReplyRequest request)
+    public async Task<ReviewReplyDto?> GetReplyAsync(int reviewId) => await _context.ReviewReplies.AsNoTracking().Where(reply => reply.ReviewId == reviewId).OrderByDescending(reply => reply.UpdatedAt).Select(reply => MapReply(reply)).FirstOrDefaultAsync();
+
+    public async Task<ReviewReplyDto?> GenerateReplyAsync(int reviewId, GenerateReviewReplyRequest request)
     {
-        var review = await _context.Reviews.FindAsync(request.ReviewId);
-        if (review == null) throw new KeyNotFoundException($"Review with ID {request.ReviewId} not found.");
-
-        return await AnalyzeAndGenerateReplyAsync(review).ConfigureAwait(false);
-    }
-
-    public async Task<bool> PostReplyAsync(PostReplyRequest request)
-    {
-        var review = await _context.Reviews.FindAsync(request.ReviewId);
-        if (review == null) return false;
-
-        review.AIReply = request.ReplyText;
-        review.IsReplied = true;
-
+        var review = await _context.Reviews.FindAsync(reviewId);
+        if (review == null) return null;
+        var mode = NormalizeMode(request.Mode);
+        if (mode is null || (mode == "Custom Prompt" && string.IsNullOrWhiteSpace(request.CustomPrompt))) return null;
+        var prompt = BuildStudioPrompt(review, mode, request.CustomPrompt);
+        var response = await _providerFactory.GetDefaultProvider().GenerateAsync(new AIRequest { Prompt = prompt, Temperature = 0.55, MaxTokens = 420, CorrelationId = $"review-reply-{reviewId}" });
+        if (!response.IsSuccess) throw new InvalidOperationException(response.ErrorMessage);
+        var reply = new ReviewReply { ReviewId = reviewId, Mode = mode, Prompt = prompt, GeneratedReply = response.Content.Trim(), EditedReply = response.Content.Trim(), Status = "Generated" };
+        _context.ReviewReplies.Add(reply);
         await _context.SaveChangesAsync();
-        return true;
+        return MapReply(reply);
+    }
+
+    public async Task<ReviewReplyDto?> SaveDraftAsync(int reviewId, SaveReviewReplyDraftRequest request)
+    {
+        var reply = await _context.ReviewReplies.Where(item => item.ReviewId == reviewId).OrderByDescending(item => item.UpdatedAt).FirstOrDefaultAsync();
+        if (reply == null || string.IsNullOrWhiteSpace(request.EditedReply)) return null;
+        reply.EditedReply = request.EditedReply.Trim(); reply.Status = "Draft"; reply.UpdatedAt = DateTime.UtcNow;
+        await _context.SaveChangesAsync(); return MapReply(reply);
+    }
+
+    public async Task<ReviewReplyDto?> PublishReplyAsync(int reviewId)
+    {
+        var review = await _context.Reviews.FindAsync(reviewId);
+        var reply = await _context.ReviewReplies.Where(item => item.ReviewId == reviewId).OrderByDescending(item => item.UpdatedAt).FirstOrDefaultAsync();
+        if (review == null || reply == null) return null;
+        var published = await _googleBusiness.PublishReviewReplyAsync(reviewId, reply.EditedReply);
+        reply.Status = published ? "Published" : "Queued"; reply.UpdatedAt = DateTime.UtcNow;
+        if (published) { review.AIReply = reply.EditedReply; review.IsReplied = true; await PublishReviewUpdatedAsync(MapToDto(review)); }
+        await _context.SaveChangesAsync(); return MapReply(reply);
     }
 
     /// <summary>
@@ -269,6 +296,29 @@ public class ReviewService : IReviewService
         };
     }
 
+    private static string? NormalizeMode(string mode) => mode.Trim().ToLowerInvariant() switch
+    {
+        "professional" => "Professional",
+        "friendly" => "Friendly",
+        "premium" => "Premium",
+        "custom prompt" => "Custom Prompt",
+        _ => null
+    };
+
+    private static string BuildStudioPrompt(Review review, string mode, string? customPrompt)
+    {
+        var instruction = mode switch
+        {
+            "Friendly" => "Reply warmly and conversationally, with genuine appreciation and approachable language.",
+            "Premium" => "Reply with refined, elevated hospitality language that conveys exceptional personal care.",
+            "Custom Prompt" => customPrompt!.Trim(),
+            _ => "Reply with a polished, concise, professional business tone that addresses the customer respectfully."
+        };
+        return $"You are writing a public Google Business review reply. {instruction} Use 2-4 sentences, no markdown, no invented claims, discounts, or dates. Customer: {review.ReviewerName}. Rating: {review.Rating}/5. Review: {review.ReviewText}";
+    }
+
+    private static ReviewReplyDto MapReply(ReviewReply reply) => new() { Id = reply.Id, ReviewId = reply.ReviewId, Mode = reply.Mode, Prompt = reply.Prompt, GeneratedReply = reply.GeneratedReply, EditedReply = reply.EditedReply, Status = reply.Status, CreatedAt = reply.CreatedAt, UpdatedAt = reply.UpdatedAt };
+
     private static ReviewDto MapToDto(Review review)
     {
         return new ReviewDto
@@ -282,6 +332,11 @@ public class ReviewService : IReviewService
             CreatedAt = review.CreatedAt
         };
     }
+
+    private Task PublishReviewUpdatedAsync(ReviewDto review) => Task.WhenAll(
+        _hub.Clients.All.SendAsync("ReviewUpdated", review),
+        _hub.Clients.All.SendAsync("DashboardUpdated", new { module = "reviews", entityId = review.Id, status = review.IsReplied ? "Replied" : "Updated", occurredAt = DateTime.UtcNow }),
+        _hub.Clients.All.SendAsync("Notification", new { title = "Review updated", message = $"Review from {review.ReviewerName} was updated.", level = "Information", occurredAt = DateTime.UtcNow }));
 
     private sealed class RawAnalysis
     {

@@ -5,30 +5,103 @@ using Microsoft.IdentityModel.Tokens;
 using System.Text;
 using LocalMindAI.Api.Services.AI;
 using Microsoft.OpenApi;
+using Microsoft.AspNetCore.Diagnostics.HealthChecks;
+using Microsoft.AspNetCore.RateLimiting;
+using System.Threading.RateLimiting;
+using System.Text.Json;
+using Azure.Identity;
+using LocalMindAI.Api.Services.Storage;
+using Microsoft.AspNetCore.Http.Features;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.DataProtection;
 
 var builder = WebApplication.CreateBuilder(args);
+builder.WebHost.ConfigureKestrel(options => options.Limits.MaxRequestBodySize = 10 * 1024 * 1024);
+
+if (Uri.TryCreate(builder.Configuration["KeyVault:Uri"], UriKind.Absolute, out var keyVaultUri))
+    builder.Configuration.AddAzureKeyVault(keyVaultUri, new DefaultAzureCredential());
+
+var jwtKey = builder.Configuration["Jwt:Key"];
+if (string.IsNullOrWhiteSpace(jwtKey) || jwtKey.Length < 32)
+    throw new InvalidOperationException("Jwt:Key must be supplied through a secure configuration provider and be at least 32 characters long.");
+
+if (builder.Environment.IsProduction() && !(builder.Configuration.GetSection("Cors:AllowedOrigins").Get<string[]>()?.Any() ?? false))
+    throw new InvalidOperationException("Cors:AllowedOrigins must contain at least one trusted frontend origin in production.");
+
+builder.Logging.ClearProviders();
+builder.Logging.AddConsole();
+builder.Logging.AddJsonConsole();
 
 // -------------------------
 // Services
 // -------------------------
 
 builder.Services.AddControllers();
+var redisConnectionString = builder.Configuration["Redis:ConnectionString"];
+var signalR = builder.Services.AddSignalR();
+if (!string.IsNullOrWhiteSpace(redisConnectionString))
+{
+    builder.Services.AddStackExchangeRedisCache(options => options.Configuration = redisConnectionString);
+    signalR.AddStackExchangeRedis(redisConnectionString);
+}
+else builder.Services.AddDistributedMemoryCache();
+builder.Services.AddSingleton<LocalMindAI.Api.Hubs.HubPresenceRegistry>();
+builder.Services.AddSingleton<LocalMindAI.Api.Services.IMonitoringService, LocalMindAI.Api.Services.MonitoringService>();
+builder.Services.AddHealthChecks()
+    .AddCheck<LocalMindAI.Api.Services.DatabaseHealthCheck>("database", tags: ["ready"])
+    .AddCheck<LocalMindAI.Api.Services.PlatformDependenciesHealthCheck>("platform-dependencies", tags: ["ready"])
+    .AddCheck<LocalMindAI.Api.Services.RedisHealthCheck>("redis", tags: ["ready"])
+    .AddCheck<LocalMindAI.Api.Services.BlobStorageHealthCheck>("blob-storage", tags: ["ready"]);
+builder.Services.AddRateLimiter(options =>
+{
+    options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+    options.AddFixedWindowLimiter("api", limiter =>
+    {
+        limiter.PermitLimit = 120;
+        limiter.Window = TimeSpan.FromMinutes(1);
+        limiter.QueueLimit = 0;
+        limiter.AutoReplenishment = true;
+    });
+    options.OnRejected = async (context, cancellationToken) =>
+    {
+        context.HttpContext.Response.ContentType = "application/json";
+        await context.HttpContext.Response.WriteAsync("{\"message\":\"Too many requests. Please retry shortly.\"}", cancellationToken);
+    };
+});
+if (!string.IsNullOrWhiteSpace(builder.Configuration["ApplicationInsights:ConnectionString"]))
+    builder.Services.AddApplicationInsightsTelemetry();
 
 // CORS
 builder.Services.AddCors(options =>
 {
     options.AddPolicy("ReactPolicy", policy =>
     {
-        policy.AllowAnyOrigin()
-              .AllowAnyHeader()
-              .AllowAnyMethod();
+        var origins = builder.Configuration.GetSection("Cors:AllowedOrigins").Get<string[]>() ?? [];
+        var trustedOrigins = builder.Environment.IsDevelopment() && origins.Length == 0 ? ["http://localhost:5173"] : origins;
+        policy.WithOrigins(trustedOrigins).AllowAnyHeader().AllowAnyMethod().AllowCredentials();
     });
 });
 
-// Database
+var databaseProvider = builder.Configuration["Database:Provider"] ?? "Sqlite";
+var connectionString = builder.Configuration.GetConnectionString("DefaultConnection")
+    ?? throw new InvalidOperationException("ConnectionStrings:DefaultConnection is required.");
+
 builder.Services.AddDbContext<ApplicationDbContext>(options =>
-    options.UseSqlServer(
-        builder.Configuration.GetConnectionString("DefaultConnection")));
+{
+    if (string.Equals(databaseProvider, "SqlServer", StringComparison.OrdinalIgnoreCase))
+    {
+        options.UseSqlServer(connectionString, sqlServer => sqlServer.EnableRetryOnFailure());
+        return;
+    }
+
+    if (string.Equals(databaseProvider, "Sqlite", StringComparison.OrdinalIgnoreCase))
+    {
+        options.UseSqlite(connectionString);
+        return;
+    }
+
+    throw new InvalidOperationException("Database:Provider must be either Sqlite or SqlServer.");
+});
 
 // JWT Authentication
 builder.Services.AddAuthentication(options =>
@@ -44,39 +117,93 @@ builder.Services.AddAuthentication(options =>
         ValidateAudience = true,
         ValidateLifetime = true,
         ValidateIssuerSigningKey = true,
+        ClockSkew = TimeSpan.Zero,
 
         ValidIssuer = builder.Configuration["Jwt:Issuer"],
         ValidAudience = builder.Configuration["Jwt:Audience"],
 
         IssuerSigningKey = new SymmetricSecurityKey(
-            Encoding.UTF8.GetBytes(builder.Configuration["Jwt:Key"]!))
+            Encoding.UTF8.GetBytes(jwtKey))
     };
 
     options.Events = new JwtBearerEvents
     {
+        OnMessageReceived = context =>
+        {
+            // Browser SignalR transports cannot consistently send the bearer header after
+            // negotiation. SignalR sends its access token as a query value for this hub only.
+            var accessToken = context.Request.Query["access_token"];
+            var path = context.HttpContext.Request.Path;
+            if (!string.IsNullOrWhiteSpace(accessToken) && path.StartsWithSegments("/hubs/workflow-monitoring"))
+                context.Token = accessToken;
+
+            return Task.CompletedTask;
+        },
         OnAuthenticationFailed = context =>
         {
-            Console.WriteLine($"JWT ERROR: {context.Exception.GetType().Name}: {context.Exception.Message}");
+            context.HttpContext.RequestServices.GetRequiredService<ILoggerFactory>().CreateLogger("Authentication").LogWarning(context.Exception, "JWT authentication failed.");
             return Task.CompletedTask;
         },
 
         OnChallenge = context =>
         {
-            Console.WriteLine("JWT CHALLENGE");
+            context.HttpContext.RequestServices.GetRequiredService<ILoggerFactory>().CreateLogger("Authentication").LogDebug("JWT challenge issued for {Path}.", context.Request.Path);
             return Task.CompletedTask;
         }
     };
 });
 
-builder.Services.AddAuthorization();
+builder.Services.AddAuthorization(options =>
+{
+    options.FallbackPolicy = new AuthorizationPolicyBuilder()
+        .RequireAuthenticatedUser()
+        .Build();
+    foreach (var permission in new[]
+    {
+        "CRM.View", "CRM.Create", "CRM.Edit", "CRM.Delete",
+        "Reviews.View", "Reviews.Reply", "Reviews.Publish",
+        "Posts.View", "Posts.Create", "Posts.Publish", "Images.Generate",
+        "Workflow.Execute", "Agents.Run", "Monitoring.View", "Organization.Manage",
+        "Analytics.View", "Users.Invite", "Users.Edit", "Users.Delete", "Users.AssignRoles", "Settings.Manage"
+    })
+        options.AddPolicy($"Permission:{permission}", policy => policy.RequireClaim("permission", permission));
+});
+builder.Services.AddScoped<LocalMindAI.Api.Services.IAuthTokenService, LocalMindAI.Api.Services.AuthTokenService>();
+builder.Services.AddScoped<LocalMindAI.Api.Services.IOrganizationService, LocalMindAI.Api.Services.OrganizationService>();
+builder.Services.AddScoped<LocalMindAI.Api.Services.IRoleService, LocalMindAI.Api.Services.RoleService>();
+builder.Services.AddScoped<LocalMindAI.Api.Services.IUserService, LocalMindAI.Api.Services.UserService>();
+var dataProtectionKeyPath = builder.Configuration["DataProtection:KeyRingPath"]
+    ?? Path.Combine(builder.Environment.ContentRootPath, "App_Data", "DataProtection-Keys");
+Directory.CreateDirectory(dataProtectionKeyPath);
+builder.Services.AddDataProtection().PersistKeysToFileSystem(new DirectoryInfo(dataProtectionKeyPath));
+builder.Services.AddScoped<LocalMindAI.Api.Services.ISecurityService, LocalMindAI.Api.Services.SecurityService>();
+builder.Services.AddScoped<LocalMindAI.Api.Services.IIntegrationService, LocalMindAI.Api.Services.IntegrationService>();
+builder.Services.AddScoped<LocalMindAI.Api.Services.IAnalyticsService, LocalMindAI.Api.Services.AnalyticsService>();
+builder.Services.AddSingleton<LocalMindAI.Api.Services.IExternalServicesDiagnostics, LocalMindAI.Api.Services.ExternalServicesDiagnostics>();
+builder.Services.AddSingleton<LocalMindAI.Api.Services.ExternalHttpRetry>();
+builder.Services.AddSingleton<LocalMindAI.Api.Services.GoogleOAuthStateStore>();
+if (string.Equals(builder.Configuration["Storage:Provider"], "AzureBlob", StringComparison.OrdinalIgnoreCase))
+    builder.Services.AddSingleton<IFileStorageProvider, AzureBlobStorageProvider>();
+else builder.Services.AddSingleton<IFileStorageProvider, LocalFileStorageProvider>();
 
 // AI Service
 builder.Services.AddScoped<LocalMindAI.Api.Services.AIService>();
 
 // Review Service
 builder.Services.AddScoped<LocalMindAI.Api.Services.IReviewService, LocalMindAI.Api.Services.ReviewService>();
+builder.Services.AddScoped<LocalMindAI.Api.Services.IAgentService, LocalMindAI.Api.Services.AgentService>();
+builder.Services.AddScoped<LocalMindAI.Api.Services.IGoogleBusinessProfileService, LocalMindAI.Api.Services.GoogleBusinessProfileService>();
+builder.Services.AddScoped<LocalMindAI.Api.Services.IWorkflowService, LocalMindAI.Api.Services.WorkflowService>();
+builder.Services.AddSingleton<LocalMindAI.Api.Services.WorkflowExecutionQueue>();
+builder.Services.AddScoped<LocalMindAI.Api.Services.IWorkflowRuntimeService, LocalMindAI.Api.Services.WorkflowRuntimeService>();
+builder.Services.AddScoped<LocalMindAI.Api.Services.IWorkflowNodeExecutor, LocalMindAI.Api.Services.WorkflowNodeExecutor>();
+builder.Services.AddScoped<LocalMindAI.Api.Services.IGoogleBusinessPostPublisher, LocalMindAI.Api.Services.GoogleBusinessPostPublisher>();
+builder.Services.AddHostedService<LocalMindAI.Api.Services.GoogleBusinessPostPublisherWorker>();
+builder.Services.AddHostedService<LocalMindAI.Api.Services.WorkflowExecutionWorker>();
+builder.Services.AddHostedService<LocalMindAI.Api.Services.MonitoringBroadcastWorker>();
 
 // AI Gateway (Azure OpenAI / Ollama providers + factory)
+builder.Services.AddHttpClient("ExternalServices", client => client.Timeout = TimeSpan.FromSeconds(30));
 builder.Services.AddHttpClient();
 builder.Services.AddAIGateway(builder.Configuration);
 
@@ -117,24 +244,59 @@ var app = builder.Build();
 // Middleware
 // -------------------------
 
+app.UseMiddleware<LocalMindAI.Api.Middleware.CorrelationMiddleware>();
 app.UseMiddleware<LocalMindAI.Api.Middleware.ErrorHandlingMiddleware>();
+app.Use(async (context, next) =>
+{
+    var stopwatch = System.Diagnostics.Stopwatch.StartNew();
+    await next();
+    stopwatch.Stop();
+    context.RequestServices.GetRequiredService<LocalMindAI.Api.Services.IMonitoringService>().RecordRequest(context.Request.Path, context.Response.StatusCode, stopwatch.Elapsed.TotalMilliseconds);
+});
 
 if (app.Environment.IsDevelopment())
 {
     app.UseSwagger();
     app.UseSwaggerUI();
 }
+else app.UseHsts();
 
 app.UseHttpsRedirection();
+app.Use(async (context, next) =>
+{
+    context.Response.Headers["X-Content-Type-Options"] = "nosniff";
+    context.Response.Headers["X-Frame-Options"] = "DENY";
+    context.Response.Headers["Referrer-Policy"] = "strict-origin-when-cross-origin";
+    context.Response.Headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()";
+    context.Response.Headers["Cross-Origin-Opener-Policy"] = "same-origin";
+    context.Response.Headers["Cross-Origin-Resource-Policy"] = "same-origin";
+    context.Response.Headers["Cross-Origin-Embedder-Policy"] = "require-corp";
+    context.Response.Headers["Content-Security-Policy"] = "default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'; form-action 'self'; img-src 'self' data: blob: https:; font-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self' https: wss:; upgrade-insecure-requests";
+    await next();
+});
 
 // Enable CORS
 app.UseCors("ReactPolicy");
+app.UseRateLimiter();
 
 // Authentication
 app.UseAuthentication();
 app.UseAuthorization();
 
 // Controllers
-app.MapControllers();
+app.MapControllers().RequireRateLimiting("api");
+app.MapHub<LocalMindAI.Api.Hubs.WorkflowMonitoringHub>("/hubs/workflow-monitoring").RequireRateLimiting("api");
+app.MapHealthChecks("/healthz", new HealthCheckOptions
+{
+    Predicate = _ => true,
+    ResultStatusCodes = { [Microsoft.Extensions.Diagnostics.HealthChecks.HealthStatus.Degraded] = StatusCodes.Status200OK },
+    ResponseWriter = async (context, report) =>
+    {
+        context.Response.ContentType = "application/json";
+        await context.Response.WriteAsync(JsonSerializer.Serialize(new { status = report.Status.ToString(), checks = report.Entries.ToDictionary(entry => entry.Key, entry => new { status = entry.Value.Status.ToString(), description = entry.Value.Description, data = entry.Value.Data }) }));
+    }
+}).AllowAnonymous();
 
 app.Run();
+
+public partial class Program;

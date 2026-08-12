@@ -74,22 +74,33 @@ public class ReviewsController : ControllerBase
         return NoContent();
     }
 
-    [HttpPost("{id}/reply")]
-    public async Task<ActionResult<GenerateReplyResponse>> GenerateReply(int id)
+    [HttpPost("{id}/generate")]
+    public async Task<ActionResult<ReviewReplyDto>> GenerateReply(int id, GenerateReviewReplyRequest request)
     {
         try
         {
-            var request = new GenerateReplyRequest { ReviewId = id };
-            var response = await _reviewService.GenerateReplyAsync(request);
-            return Ok(response);
-        }
-        catch (KeyNotFoundException ex)
-        {
-            return NotFound(new { Message = ex.Message });
+            var response = await _reviewService.GenerateReplyAsync(id, request);
+            return response is null ? NotFound() : Ok(response);
         }
         catch (Exception ex)
         {
             return StatusCode(500, new { Message = "An error occurred while generating the reply.", Details = ex.Message });
         }
+    }
+
+    [HttpPost("{id}/draft")]
+    public async Task<ActionResult<ReviewReplyDto>> SaveDraft(int id, SaveReviewReplyDraftRequest request) => (await _reviewService.SaveDraftAsync(id, request)) is { } reply ? Ok(reply) : NotFound();
+
+    [HttpPost("{id}/publish")]
+    public async Task<ActionResult<ReviewReplyDto>> PublishReply(int id) => (await _reviewService.PublishReplyAsync(id)) is { } reply ? Ok(reply) : NotFound();
+
+    [HttpGet("{id}/reply")]
+    public async Task<ActionResult<ReviewReplyDto>> GetReply(int id) => (await _reviewService.GetReplyAsync(id)) is { } reply ? Ok(reply) : NotFound();
+
+    [HttpGet("analytics")]
+    public async Task<IActionResult> Analytics()
+    {
+        var reviews = (await _reviewService.GetAllAsync()).ToList();
+        return Ok(new { total = reviews.Count, replied = reviews.Count(review => review.IsReplied), averageRating = reviews.Count == 0 ? 0 : reviews.Average(review => review.Rating), positive = reviews.Count(review => review.Rating >= 4), neutral = reviews.Count(review => review.Rating == 3), negative = reviews.Count(review => review.Rating <= 2) });
     }
 }

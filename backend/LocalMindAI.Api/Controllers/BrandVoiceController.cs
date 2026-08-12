@@ -1,0 +1,9 @@
+using LocalMindAI.Api.Data;
+using LocalMindAI.Api.Models;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
+namespace LocalMindAI.Api.Controllers;
+
+[ApiController, Route("api/brandvoice"), Authorize]
+public class BrandVoiceController(ApplicationDbContext context) : ControllerBase { [HttpGet] public async Task<ActionResult<BrandVoice>> Get() => Ok(await context.Set<BrandVoice>().OrderBy(item => item.Id).FirstOrDefaultAsync() ?? new BrandVoice()); [HttpPut] public async Task<ActionResult<BrandVoice>> Put(BrandVoice input) { var value = await context.Set<BrandVoice>().FirstOrDefaultAsync() ?? new BrandVoice(); if (value.Id == 0) context.Add(value); value.BusinessName = input.BusinessName; value.BusinessDescription = input.BusinessDescription; value.Industry = input.Industry; value.WritingStyle = input.WritingStyle; value.Tone = input.Tone; value.EmojiEnabled = input.EmojiEnabled; value.ReplyLength = input.ReplyLength; value.CallToActionEnabled = input.CallToActionEnabled; value.Language = input.Language; value.Keywords = input.Keywords; value.Audience = input.Audience; value.UpdatedAt = DateTime.UtcNow; await context.SaveChangesAsync(); return Ok(value); } }
