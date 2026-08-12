@@ -79,7 +79,7 @@ public class AuthController : ControllerBase
     [HttpPost("refresh")]
     public async Task<IActionResult> Refresh(CancellationToken cancellationToken)
     {
-        var tokens = await _tokenService.RotateAsync(Request.Cookies["digitech_refresh" ] ?? string.Empty, GetClientIpAddress(), cancellationToken);
+        var tokens = await _tokenService.RotateAsync(Request.Cookies["digitech_refresh"] ?? string.Empty, GetClientIpAddress(), cancellationToken);
         if (tokens is null)
             return Unauthorized(new { message = "The refresh token is invalid, expired, or has been revoked." });
 

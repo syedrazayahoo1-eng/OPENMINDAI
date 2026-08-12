@@ -1,4 +1,5 @@
 namespace LocalMindAI.Api.DTOs;
+
 public sealed class AnalyticsRangeQuery { public string Period { get; init; } = "30d"; public DateTime? StartDate { get; init; } public DateTime? EndDate { get; init; } }
 public sealed class AnalyticsPointDto { public DateTime Date { get; init; } public decimal Value { get; init; } public string? Label { get; init; } }
 public sealed class AnalyticsSliceDto { public string Name { get; init; } = string.Empty; public decimal Value { get; init; } }
